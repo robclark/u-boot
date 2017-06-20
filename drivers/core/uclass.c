@@ -458,14 +458,23 @@ int uclass_get_device_by_phandle(enum uclass_id id, struct udevice *parent,
 
 int uclass_first_device(enum uclass_id id, struct udevice **devp)
 {
-	struct udevice *dev;
+	struct udevice *dev = NULL;
 	int ret;
 
 	*devp = NULL;
 	ret = uclass_find_first_device(id, &dev);
 	if (!dev)
 		return 0;
-	return uclass_get_device_tail(dev, ret, devp);
+	ret = uclass_get_device_tail(dev, ret, devp);
+	if (ret && dev) {
+		/* we have a device, but it failed to probe, move on and
+		 * try the next one.
+		 */
+		ret = uclass_next_device(&dev);
+		if (!ret)
+			*devp = dev;
+	}
+	return ret;
 }
 
 int uclass_first_device_err(enum uclass_id id, struct udevice **devp)
@@ -490,7 +499,16 @@ int uclass_next_device(struct udevice **devp)
 	ret = uclass_find_next_device(&dev);
 	if (!dev)
 		return 0;
-	return uclass_get_device_tail(dev, ret, devp);
+	ret = uclass_get_device_tail(dev, ret, devp);
+	if (ret && (dev != *devp)) {
+		/* we have a device, but it failed to probe, move on and
+		 * try the next one.
+		 */
+		ret = uclass_next_device(&dev);
+		if (!ret)
+			*devp = dev;
+	}
+	return ret;
 }
 
 int uclass_bind_device(struct udevice *dev)
