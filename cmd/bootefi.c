@@ -28,31 +28,48 @@ DECLARE_GLOBAL_DATA_PTR;
  * In addition to the originating device we also declare the file path
  * of "bootefi" based loads to be /bootefi.
  */
-static struct efi_device_path_file_path bootefi_image_path[] = {
+static struct efi_device_path_acpi_path bootefi_acpi_path = {
+	.dp.type = DEVICE_PATH_TYPE_ACPI_DEVICE,
+	.dp.sub_type = DEVICE_PATH_SUB_TYPE_ACPI_DEVICE,
+	.dp.length = sizeof(bootefi_acpi_path),
+	.hid = EISA_PNP_ID(0x1337),
+	.uid = 0,
+};
+
+static struct efi_device_path_hard_drive_path bootefi_hard_drive_path = {
+	.dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE,
+	.dp.sub_type = DEVICE_PATH_SUB_TYPE_HARD_DRIVE_PATH,
+	.dp.length = sizeof(bootefi_hard_drive_path),
+};
+
+static struct efi_device_path_file_path bootefi_image_path_template[] = {
 	{
 		.dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE,
 		.dp.sub_type = DEVICE_PATH_SUB_TYPE_FILE_PATH,
-		.dp.length = sizeof(bootefi_image_path[0]),
+		.dp.length = sizeof(bootefi_image_path_template[0]),
 		.str = { 'b','o','o','t','e','f','i' },
 	}, {
 		.dp.type = DEVICE_PATH_TYPE_END,
 		.dp.sub_type = DEVICE_PATH_SUB_TYPE_END,
-		.dp.length = sizeof(bootefi_image_path[0]),
+		.dp.length = sizeof(bootefi_image_path_template[0]),
 	}
 };
 
-static struct efi_device_path_file_path bootefi_device_path[] = {
-	{
-		.dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE,
-		.dp.sub_type = DEVICE_PATH_SUB_TYPE_FILE_PATH,
-		.dp.length = sizeof(bootefi_image_path[0]),
-		.str = { 'b','o','o','t','e','f','i' },
-	}, {
-		.dp.type = DEVICE_PATH_TYPE_END,
-		.dp.sub_type = DEVICE_PATH_SUB_TYPE_END,
-		.dp.length = sizeof(bootefi_image_path[0]),
-	}
+static u8 image_dp_buf[sizeof(bootefi_acpi_path)
+			+ sizeof(bootefi_hard_drive_path)
+			+ sizeof(bootefi_image_path_template)];
+
+static struct efi_device_path_file_path bootefi_device_path_template = {
+	.dp.type = DEVICE_PATH_TYPE_END,
+	.dp.sub_type = DEVICE_PATH_SUB_TYPE_END,
+	.dp.length = sizeof(bootefi_device_path_template),
 };
+
+static u8 device_dp_buf[sizeof(bootefi_acpi_path)
+			+ sizeof(bootefi_hard_drive_path)
+			+ sizeof(bootefi_device_path_template)];
+
+static struct efi_device_path *bootefi_device_path = (void *)device_dp_buf;
 
 static efi_status_t EFIAPI bootefi_open_dp(void *handle, efi_guid_t *protocol,
 			void **protocol_interface, void *agent_handle,
@@ -64,8 +81,8 @@ static efi_status_t EFIAPI bootefi_open_dp(void *handle, efi_guid_t *protocol,
 
 /* The EFI loaded_image interface for the image executed via "bootefi" */
 static struct efi_loaded_image loaded_image_info = {
-	.device_handle = bootefi_device_path,
-	.file_path = bootefi_image_path,
+	.device_handle = (void *)device_dp_buf,
+	.file_path = (void *)image_dp_buf,
 };
 
 /* The EFI object struct for the image executed via "bootefi" */
@@ -93,7 +110,7 @@ static struct efi_object loaded_image_info_obj = {
 
 /* The EFI object struct for the device the "bootefi" image was loaded from */
 static struct efi_object bootefi_device_obj = {
-	.handle = bootefi_device_path,
+	.handle = (void *)device_dp_buf,
 	.protocols = {
 		{
 			/* When asking for the device path interface, return
@@ -103,6 +120,59 @@ static struct efi_object bootefi_device_obj = {
 		}
 	},
 };
+
+void make_device_paths(int net, struct blk_desc *desc, int part)
+{
+	memcpy(device_dp_buf,
+	       &bootefi_acpi_path,
+	       sizeof(bootefi_acpi_path));
+	memcpy(image_dp_buf,
+	       &bootefi_acpi_path,
+	       sizeof(bootefi_acpi_path));
+
+	if (net) {
+		memcpy(device_dp_buf + sizeof(bootefi_acpi_path),
+		       &bootefi_device_path_template,
+		       sizeof (bootefi_device_path_template));
+		memcpy(image_dp_buf + sizeof(bootefi_acpi_path),
+		       bootefi_image_path_template,
+		       sizeof (bootefi_image_path_template));
+	} else {
+		disk_partition_t info;
+		int rc = -1;
+		if (part > 0)
+			rc = part_get_info(desc, part, &info);
+
+		if (rc < 0) {
+			memcpy(device_dp_buf + sizeof(bootefi_acpi_path),
+			       &bootefi_device_path_template,
+			       sizeof (bootefi_device_path_template));
+			memcpy(image_dp_buf + sizeof(bootefi_acpi_path),
+			       bootefi_image_path_template,
+			       sizeof (bootefi_image_path_template));
+		} else {
+			bootefi_hard_drive_path.partition_number = part - 1;
+			bootefi_hard_drive_path.partition_start = info.start;
+			bootefi_hard_drive_path.partition_end = info.size;
+
+			memcpy(device_dp_buf + sizeof(bootefi_acpi_path),
+			       &bootefi_hard_drive_path,
+			       sizeof (bootefi_hard_drive_path));
+			memcpy(device_dp_buf + sizeof(bootefi_acpi_path)
+					     + sizeof(bootefi_hard_drive_path),
+			       &bootefi_device_path_template,
+			       sizeof (bootefi_device_path_template));
+
+			memcpy(image_dp_buf + sizeof(bootefi_acpi_path),
+			       &bootefi_hard_drive_path,
+			       sizeof (bootefi_hard_drive_path));
+			memcpy(image_dp_buf + sizeof(bootefi_acpi_path)
+					    + sizeof(bootefi_hard_drive_path),
+			       bootefi_image_path_template,
+			       sizeof (bootefi_image_path_template));
+		}
+	}
+}
 
 static void *copy_fdt(void *fdt)
 {
@@ -217,7 +287,7 @@ static unsigned long do_bootefi_exec(void *efi, void *fdt)
 	void *nethandle = loaded_image_info.device_handle;
 	efi_net_register(&nethandle);
 
-	if (!memcmp(bootefi_device_path[0].str, "N\0e\0t", 6))
+	if (!memcmp(bootefi_device_path_template.str, "N\0e\0t", 6))
 		loaded_image_info.device_handle = nethandle;
 	else
 		loaded_image_info.device_handle = bootefi_device_path;
@@ -320,6 +390,7 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 	__maybe_unused struct blk_desc *desc;
 	char devname[32] = { 0 }; /* dp->str is u16[32] long */
 	char *colon;
+	int part = -1;
 
 #if defined(CONFIG_BLK) || CONFIG_IS_ENABLED(ISO_PARTITION)
 	desc = blk_get_dev(dev, simple_strtol(devnr, NULL, 10));
@@ -336,7 +407,9 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 		snprintf(devname, sizeof(devname), "%s%s", dev, devnr);
 	}
 
-	colon = strchr(devname, ':');
+	colon = strchr(devnr, ':');
+	if (colon)
+		part = simple_strtol(colon+1, NULL, 10);
 
 #if CONFIG_IS_ENABLED(ISO_PARTITION)
 	/* For ISOs we create partition block devices */
@@ -352,17 +425,15 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 	if (colon)
 		*colon = '\0';
 
-	/* Patch bootefi_device_path to the target device */
-	memset(bootefi_device_path[0].str, 0, sizeof(bootefi_device_path[0].str));
-	ascii2unicode(bootefi_device_path[0].str, devname);
-
-	/* Patch bootefi_image_path to the target file path */
-	memset(bootefi_image_path[0].str, 0, sizeof(bootefi_image_path[0].str));
+	/* Patch bootefi_image_path_template to the target file path */
+	memset(bootefi_image_path_template[0].str, 0, sizeof(bootefi_image_path_template[0].str));
 	if (strcmp(dev, "Net")) {
 		/* Add leading / to fs paths, because they're absolute */
 		snprintf(devname, sizeof(devname), "/%s", path);
 	} else {
 		snprintf(devname, sizeof(devname), "%s", path);
 	}
-	ascii2unicode(bootefi_image_path[0].str, devname);
+	ascii2unicode(bootefi_image_path_template[0].str, devname);
+
+	make_device_paths(!strcmp(dev, "Net"), desc, part);
 }
