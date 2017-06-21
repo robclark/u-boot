@@ -301,10 +301,16 @@ int part_get_info_efi(struct blk_desc *dev_desc, int part,
 static int part_test_efi(struct blk_desc *dev_desc)
 {
 	ALLOC_CACHE_ALIGN_BUFFER_PAD(legacy_mbr, legacymbr, 1, dev_desc->blksz);
+	ALLOC_CACHE_ALIGN_BUFFER_PAD(gpt_header, gpt_head, 1, dev_desc->blksz);
+	gpt_entry *gpt_pte = NULL;
 
 	/* Read legacy MBR from block 0 and validate it */
 	if ((blk_dread(dev_desc, 0, 1, (ulong *)legacymbr) != 1)
-		|| (is_pmbr_valid(legacymbr) != 1)) {
+		|| (is_pmbr_valid(legacymbr) != 1)
+		|| ((is_gpt_valid(dev_desc, GPT_PRIMARY_PARTITION_TABLE_LBA,
+				  gpt_head, &gpt_pte) != 1)
+		    && is_gpt_valid(dev_desc, (dev_desc->lba - 1),
+				    gpt_head, &gpt_pte) != 1)) {
 		return -1;
 	}
 	return 0;
