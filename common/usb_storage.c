@@ -1019,7 +1019,7 @@ static int usb_test_unit_ready(ccb *srb, struct us_data *ss)
 		if ((srb->sense_buf[2] == 0x02) &&
 		    (srb->sense_buf[12] == 0x3a))
 			return -1;
-		mdelay(100);
+		mdelay(250);
 	} while (retries--);
 
 	return -1;
