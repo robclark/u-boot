@@ -272,6 +272,18 @@ struct efi_mac_addr {
 	u8 addr[32];
 };
 
+#define DEVICE_PATH_TYPE_ACPI_DEVICE		0x02
+#define DEVICE_PATH_SUB_TYPE_ACPI_DEVICE	0x01
+
+#define EFI_PNP_ID(ID)				(u32)(((ID) << 16) | 0x41D0)
+#define EISA_PNP_ID(ID)				EFI_PNP_ID(ID)
+
+struct efi_device_path_acpi_path {
+	struct efi_device_path dp;
+	u32 hid;
+	u32 uid;
+} __packed;
+
 #define DEVICE_PATH_TYPE_MESSAGING_DEVICE	0x03
 #  define DEVICE_PATH_SUB_TYPE_MSG_MAC_ADDR	0x0b
 
@@ -282,12 +294,31 @@ struct efi_device_path_mac_addr {
 };
 
 #define DEVICE_PATH_TYPE_MEDIA_DEVICE		0x04
+#  define DEVICE_PATH_SUB_TYPE_HARD_DRIVE_PATH	0x01
+#  define DEVICE_PATH_SUB_TYPE_CDROM_PATH	0x02
 #  define DEVICE_PATH_SUB_TYPE_FILE_PATH	0x04
+
+struct efi_device_path_hard_drive_path {
+	struct efi_device_path dp;
+	u32 partition_number;
+	u64 partition_start;
+	u64 partition_end;
+	u8 partition_signature[16];
+	u8 partmap_type;
+	u8 signature_type;
+} __packed;
+
+struct efi_device_path_cdrom_path {
+	struct efi_device_path dp;
+	u32 boot_entry;
+	u64 partition_start;
+	u64 partition_end;
+} __packed;
 
 struct efi_device_path_file_path {
 	struct efi_device_path dp;
 	u16 str[32];
-};
+} __packed;
 
 #define BLOCK_IO_GUID \
 	EFI_GUID(0x964e5b21, 0x6459, 0x11d2, \
