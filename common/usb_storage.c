@@ -1018,7 +1018,7 @@ static int usb_request_sense(struct scsi_cmd *srb, struct us_data *ss)
 
 static int usb_test_unit_ready(struct scsi_cmd *srb, struct us_data *ss)
 {
-	int retries = 10;
+	int retries = 20;
 
 	do {
 		memset(&srb->cmd[0], 0, 12);
@@ -1041,7 +1041,7 @@ static int usb_test_unit_ready(struct scsi_cmd *srb, struct us_data *ss)
 		if ((srb->sense_buf[2] == 0x02) &&
 		    (srb->sense_buf[12] == 0x3a))
 			return -1;
-		mdelay(100);
+		mdelay(250);
 	} while (retries--);
 
 	return -1;
