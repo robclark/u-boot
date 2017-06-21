@@ -28,7 +28,7 @@ struct efi_disk_obj {
 	/* EFI Interface Media descriptor struct, referenced by ops */
 	struct efi_block_io_media media;
 	/* EFI device path to this block device */
-	struct efi_device_path_file_path *dp;
+	struct efi_device_path *dp;
 	/* Offset into disk for simple partitions */
 	lbaint_t offset;
 	/* Internal block device */
@@ -193,19 +193,26 @@ static const struct efi_block_io block_io_disk_template = {
 	.flush_blocks = &efi_disk_flush_blocks,
 };
 
-static void efi_disk_add_dev(const char *name,
-			     const char *if_typename,
-			     const struct blk_desc *desc,
-			     int dev_index,
-			     lbaint_t offset)
+static struct efi_disk_obj *efi_disk_add_dev(const char *name,
+					     const char *if_typename,
+					     struct blk_desc *desc,
+					     int dev_index,
+					     lbaint_t offset,
+					     struct efi_disk_obj *parent,
+					     int part)
 {
+	disk_partition_t info;
 	struct efi_disk_obj *diskobj;
-	struct efi_device_path_file_path *dp;
-	int objlen = sizeof(*diskobj) + (sizeof(*dp) * 2);
+	struct efi_device_path_acpi_path *adp;
+	struct efi_device_path_hard_drive_path *hddp;
+	struct efi_device_path_cdrom_path *cddp;
+	struct efi_device_path *edp;
+	/* we just happen to know hddp is bigger than cddp */
+	int objlen = sizeof(*diskobj) + sizeof (*adp) + sizeof(*hddp) + sizeof (*edp);
 
 	/* Don't add empty devices */
 	if (!desc->lba)
-		return;
+		return NULL;
 
 	diskobj = calloc(1, objlen);
 
@@ -229,45 +236,89 @@ static void efi_disk_add_dev(const char *name,
 	diskobj->media.last_block = desc->lba - offset;
 	diskobj->ops.media = &diskobj->media;
 
-	/* Fill in device path */
-	dp = (void*)&diskobj[1];
-	diskobj->dp = dp;
-	dp[0].dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE;
-	dp[0].dp.sub_type = DEVICE_PATH_SUB_TYPE_FILE_PATH;
-	dp[0].dp.length = sizeof(*dp);
-	ascii2unicode(dp[0].str, name);
+	adp = (void*)&diskobj[1];
+	diskobj->dp = (struct efi_device_path *)adp;
 
-	dp[1].dp.type = DEVICE_PATH_TYPE_END;
-	dp[1].dp.sub_type = DEVICE_PATH_SUB_TYPE_END;
-	dp[1].dp.length = sizeof(*dp);
+	adp[0].dp.type = DEVICE_PATH_TYPE_ACPI_DEVICE;
+	adp[0].dp.sub_type = DEVICE_PATH_SUB_TYPE_ACPI_DEVICE;
+	adp[0].dp.length = sizeof (*adp);
+	adp[0].hid = EISA_PNP_ID(0x1337);
+	adp[0].uid = 0;
+
+	if (part >= 0)
+		part_get_info(desc, part, &info);
+
+	/* Fill in device path */
+	if (part < 0) {
+		edp = (struct efi_device_path *)((u8 *)adp + adp[0].dp.length);
+	} else if (desc->part_type == PART_TYPE_ISO) {
+		cddp = (struct efi_device_path_cdrom_path *)((u8 *)adp + adp[0].dp.length);
+
+		cddp[0].boot_entry = part - 1;
+		cddp[0].dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE;
+		cddp[0].dp.sub_type = DEVICE_PATH_SUB_TYPE_CDROM_PATH;
+		cddp[0].dp.length = sizeof (*cddp);
+		cddp[0].partition_start = info.start;
+		cddp[0].partition_end = info.size;
+
+		edp = (struct efi_device_path *)((u8 *)cddp + cddp[0].dp.length);
+	} else {
+		hddp = (struct efi_device_path_hard_drive_path *)((u8 *)adp + adp[0].dp.length);
+
+		hddp[0].dp.type = DEVICE_PATH_TYPE_MEDIA_DEVICE;
+		hddp[0].dp.sub_type = DEVICE_PATH_SUB_TYPE_HARD_DRIVE_PATH;
+		hddp[0].dp.length = sizeof (*hddp);
+		hddp[0].partition_number = part - 1;
+		hddp[0].partition_start = info.start;
+		hddp[0].partition_end = info.size;
+		if (desc->part_type == PART_TYPE_EFI)
+			hddp[0].partmap_type = 2;
+		else
+			hddp[0].partmap_type = 1;
+		hddp[0].signature_type = 0;
+
+		edp = (struct efi_device_path *)((u8 *)hddp + hddp[0].dp.length);
+	}
+
+	edp[0].type = DEVICE_PATH_TYPE_END;
+	edp[0].sub_type = DEVICE_PATH_SUB_TYPE_END;
+	edp[0].length = sizeof(*edp);
 
 	/* Hook up to the device list */
 	list_add_tail(&diskobj->parent.link, &efi_obj_list);
+
+	return diskobj;
 }
 
-static int efi_disk_create_eltorito(struct blk_desc *desc,
-				    const char *if_typename,
-				    int diskid,
-				    const char *pdevname)
+static int efi_disk_create_partitions(struct blk_desc *desc,
+				      const char *if_typename,
+				      int diskid,
+				      const char *pdevname,
+				      struct efi_disk_obj *parent)
 {
 	int disks = 0;
-#if CONFIG_IS_ENABLED(ISO_PARTITION)
 	char devname[32] = { 0 }; /* dp->str is u16[32] long */
 	disk_partition_t info;
 	int part = 1;
 
-	if (desc->part_type != PART_TYPE_ISO)
+#if !CONFIG_IS_ENABLED(ISO_PARTITION)
+	/*
+	 * El Torito images show up as block devices in an EFI world,
+	 * so let's create them here, unless it's disabled...
+	 */
+	if (desc->part_type == PART_TYPE_ISO)
 		return 0;
+
+#endif
 
 	while (!part_get_info(desc, part, &info)) {
 		snprintf(devname, sizeof(devname), "%s:%d", pdevname,
 			 part);
 		efi_disk_add_dev(devname, if_typename, desc, diskid,
-				 info.start);
+				 info.start, parent, part);
 		part++;
 		disks++;
 	}
-#endif
 
 	return disks;
 }
@@ -286,6 +337,7 @@ static int efi_disk_create_eltorito(struct blk_desc *desc,
 int efi_disk_register(void)
 {
 	int disks = 0;
+	struct efi_disk_obj *diskobj;
 #ifdef CONFIG_BLK
 	struct udevice *dev;
 
@@ -296,15 +348,11 @@ int efi_disk_register(void)
 		const char *if_typename = dev->driver->name;
 
 		printf("Scanning disk %s...\n", dev->name);
-		efi_disk_add_dev(dev->name, if_typename, desc, desc->devnum, 0);
+		diskobj = efi_disk_add_dev(dev->name, if_typename, desc, desc->devnum, 0, NULL, -1);
 		disks++;
 
-		/*
-		* El Torito images show up as block devices in an EFI world,
-		* so let's create them here
-		*/
-		disks += efi_disk_create_eltorito(desc, if_typename,
-						  desc->devnum, dev->name);
+		disks += efi_disk_create_partitions(desc, if_typename,
+						    desc->devnum, dev->name, diskobj);
 	}
 #else
 	int i, if_type;
@@ -332,15 +380,11 @@ int efi_disk_register(void)
 
 			snprintf(devname, sizeof(devname), "%s%d",
 				 if_typename, i);
-			efi_disk_add_dev(devname, if_typename, desc, i, 0);
+			diskobj = efi_disk_add_dev(devname, if_typename, desc, i, 0, NULL, -1);
 			disks++;
 
-			/*
-			 * El Torito images show up as block devices
-			 * in an EFI world, so let's create them here
-			 */
-			disks += efi_disk_create_eltorito(desc, if_typename,
-							  i, devname);
+			disks += efi_disk_create_partitions(desc, if_typename,
+							    i, devname, diskobj);
 		}
 	}
 #endif
