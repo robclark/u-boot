@@ -266,6 +266,26 @@ static int dm_scan_fdt_node(struct udevice *parent, const void *blob,
 	for (offset = fdt_first_subnode(blob, offset);
 	     offset > 0;
 	     offset = fdt_next_subnode(blob, offset)) {
+		ofnode node = offset_to_ofnode(offset);
+
+		/* "chosen" node isn't a device itself but may contain some: */
+		if (strcmp(ofnode_get_name(node), "chosen") == 0) {
+			dm_dbg("parsing subnodes of \"chosen\"\n");
+
+			for (node = ofnode_first_subnode(node);
+			     ofnode_valid(node);
+			     node = ofnode_next_subnode(node)) {
+				dm_dbg("subnode: %s\n", ofnode_get_name(node));
+				err = lists_bind_fdt(parent, node, NULL);
+				if (err && !ret) {
+					ret = err;
+					dm_dbg("%s: ret=%d\n", ofnode_get_name(node), ret);
+				}
+			}
+
+			continue;
+		}
+
 		if (pre_reloc_only &&
 		    !dm_fdt_pre_reloc(blob, offset))
 			continue;
@@ -273,7 +293,7 @@ static int dm_scan_fdt_node(struct udevice *parent, const void *blob,
 			dm_dbg("   - ignoring disabled device\n");
 			continue;
 		}
-		err = lists_bind_fdt(parent, offset_to_ofnode(offset), NULL);
+		err = lists_bind_fdt(parent, node, NULL);
 		if (err && !ret) {
 			ret = err;
 			debug("%s: ret=%d\n", fdt_get_name(blob, offset, NULL),
