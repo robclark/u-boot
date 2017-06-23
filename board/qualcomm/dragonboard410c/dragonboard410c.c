@@ -27,6 +27,14 @@ int dram_init_banksize(void)
 	return 0;
 }
 
+extern unsigned long fw_dtb_pointer;
+
+void *board_fdt_blob_setup(void)
+{
+	if (fdt_magic(fw_dtb_pointer) != FDT_MAGIC)
+		return NULL;
+	return (void *)fw_dtb_pointer;
+}
 
 int board_prepare_usb(enum usb_init_type type)
 {
