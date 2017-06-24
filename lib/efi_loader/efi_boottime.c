@@ -927,6 +927,11 @@ static efi_status_t EFIAPI efi_exit_boot_services(void *image_handle,
 {
 	EFI_ENTRY("%p, %ld", image_handle, map_key);
 
+#if defined(CONFIG_CMD_SAVEENV) && !defined(CONFIG_ENV_IS_NOWHERE)
+	/* save any EFI variables that have been written: */
+	saveenv();
+#endif
+
 	board_quiesce_devices();
 
 	/* Fix up caches for EFI payloads if necessary */
