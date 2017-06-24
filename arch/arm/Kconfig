@@ -633,7 +633,7 @@ config ARCH_SNAPDRAGON
 	select DM_SERIAL
 	select SPMI
 	select OF_CONTROL
-	select OF_SEPARATE
+	select OF_BOARD
 
 config ARCH_SOCFPGA
 	bool "Altera SOCFPGA family"
