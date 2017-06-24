@@ -318,6 +318,16 @@ efi_status_t __efi_runtime EFIAPI efi_get_time(
 			struct efi_time_cap *capabilities);
 void efi_get_time_init(void);
 
+efi_status_t EFIAPI efi_get_variable(s16 *variable_name,
+		efi_guid_t *vendor, u32 *attributes,
+		unsigned long *data_size, void *data);
+efi_status_t EFIAPI efi_get_next_variable(
+		unsigned long *variable_name_size,
+		s16 *variable_name, efi_guid_t *vendor);
+efi_status_t EFIAPI efi_set_variable(s16 *variable_name,
+		efi_guid_t *vendor, u32 attributes,
+		unsigned long data_size, void *data);
+
 #ifdef CONFIG_CMD_BOOTEFI_SELFTEST
 /*
  * Entry point for the tests of the EFI API.
