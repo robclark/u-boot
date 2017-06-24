@@ -277,6 +277,16 @@ efi_status_t __efi_runtime EFIAPI efi_get_time(
 			struct efi_time_cap *capabilities);
 void efi_get_time_init(void);
 
+efi_status_t EFIAPI efi_get_variable(s16 *variable_name,
+		efi_guid_t *vendor, u32 *attributes,
+		unsigned long *data_size, void *data);
+efi_status_t EFIAPI efi_get_next_variable(
+		unsigned long *variable_name_size,
+		s16 *variable_name, efi_guid_t *vendor);
+efi_status_t EFIAPI efi_set_variable(s16 *variable_name,
+		efi_guid_t *vendor, u32 attributes,
+		unsigned long data_size, void *data);
+
 #else /* defined(EFI_LOADER) && !defined(CONFIG_SPL_BUILD) */
 
 /* Without CONFIG_EFI_LOADER we don't have a runtime section, stub it out */
