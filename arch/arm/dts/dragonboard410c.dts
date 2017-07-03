@@ -72,6 +72,7 @@
 			reg = <0x78d9000 0x400>;
 		};
 
+/*
 		sdhci@07824000 {
 			compatible = "qcom,sdhci-msm-v4";
 			reg = <0x7824900 0x11c 0x7824000 0x800>;
@@ -81,6 +82,7 @@
 			clock = <&clkc 0>;
 			clock-frequency = <100000000>;
 		};
+*/
 
 		sdhci@07864000 {
 			compatible = "qcom,sdhci-msm-v4";
