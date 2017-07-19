@@ -640,7 +640,7 @@ static int usb_kbd_remove(struct udevice *dev)
 
 	return 0;
 err:
-	printf("%s: warning, ret=%d", __func__, ret);
+	printf("%s: warning, ret=%d\n", __func__, ret);
 	return ret;
 }
 
