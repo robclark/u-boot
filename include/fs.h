@@ -79,6 +79,27 @@ int fs_write(const char *filename, ulong addr, loff_t offset, loff_t len,
 	     loff_t *actwrite);
 
 /*
+ * A directory entry.
+ */
+struct fs_dirent {
+	loff_t size;
+	char name[256];
+};
+
+/*
+ * fs_readdir - Read a directory.
+ *
+ * @filename: Name of file to read from
+ * @offset: The offset into the directory to read, ie. offset of N returns
+ *    the N'th directory entry
+ * @dent: on success, filled in with directory entry
+ * @return 0 on success, -ENOTDIR if specified file is not a directory,
+ *    or -ENOENT if offset is beyond last directory entry, or -ENXIO if
+ *    operation is not supported.
+ */
+int fs_readdir(const char *filename, loff_t offset, struct fs_dirent *dent);
+
+/*
  * Common implementation for various filesystem commands, optionally limited
  * to a specific filesystem type via the fstype parameter.
  */
