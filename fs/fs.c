@@ -69,6 +69,12 @@ static inline int fs_uuid_unsupported(char *uuid_str)
 	return -1;
 }
 
+static inline int fs_readdir_unsupported(const char *filename, loff_t offset,
+					 struct fs_dirent *dent)
+{
+	return -ENXIO;
+}
+
 struct fstype_info {
 	int fstype;
 	char *name;
@@ -92,6 +98,7 @@ struct fstype_info {
 		     loff_t len, loff_t *actwrite);
 	void (*close)(void);
 	int (*uuid)(char *uuid_str);
+	int (*readdir)(const char *filename, loff_t offset, struct fs_dirent *dent);
 };
 
 static struct fstype_info fstypes[] = {
@@ -112,6 +119,7 @@ static struct fstype_info fstypes[] = {
 		.write = fs_write_unsupported,
 #endif
 		.uuid = fs_uuid_unsupported,
+		.readdir = fat_readdir,
 	},
 #endif
 #ifdef CONFIG_FS_EXT4
@@ -131,6 +139,7 @@ static struct fstype_info fstypes[] = {
 		.write = fs_write_unsupported,
 #endif
 		.uuid = ext4fs_uuid,
+		.readdir = fs_readdir_unsupported,
 	},
 #endif
 #ifdef CONFIG_SANDBOX
@@ -146,6 +155,7 @@ static struct fstype_info fstypes[] = {
 		.read = fs_read_sandbox,
 		.write = fs_write_sandbox,
 		.uuid = fs_uuid_unsupported,
+		.readdir = fs_readdir_unsupported,
 	},
 #endif
 #ifdef CONFIG_CMD_UBIFS
@@ -161,6 +171,7 @@ static struct fstype_info fstypes[] = {
 		.read = ubifs_read,
 		.write = fs_write_unsupported,
 		.uuid = fs_uuid_unsupported,
+		.readdir = fs_readdir_unsupported,
 	},
 #endif
 	{
@@ -175,6 +186,7 @@ static struct fstype_info fstypes[] = {
 		.read = fs_read_unsupported,
 		.write = fs_write_unsupported,
 		.uuid = fs_uuid_unsupported,
+		.readdir = fs_readdir_unsupported,
 	},
 };
 
@@ -329,6 +341,19 @@ int fs_write(const char *filename, ulong addr, loff_t offset, loff_t len,
 		printf("** Unable to write file %s **\n", filename);
 		ret = -1;
 	}
+	fs_close();
+
+	return ret;
+}
+
+int fs_readdir(const char *filename, loff_t offset, struct fs_dirent *dent)
+{
+	struct fstype_info *info = fs_get_info(fs_type);
+	int ret;
+
+	memset(dent, 0, sizeof(*dent));
+
+	ret = info->readdir(filename, offset, dent);
 	fs_close();
 
 	return ret;
