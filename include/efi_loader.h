@@ -70,10 +70,17 @@ extern unsigned int __efi_runtime_rel_start, __efi_runtime_rel_stop;
 /*
  * When the UEFI payload wants to open a protocol on an object to get its
  * interface (usually a struct with callback functions), this struct maps the
- * protocol GUID to the respective protocol interface */
+ * protocol GUID to the respective protocol interface.
+ *
+ * The optional ->open() fxn can be used for cases where the protocol
+ * interface is constructed on-demand, and is called if protocol_interface
+ * is NULL.
+ */
 struct efi_handler {
 	const efi_guid_t *guid;
 	void *protocol_interface;
+	efi_status_t (EFIAPI *open)(void *handle, const efi_guid_t *protocol,
+			void **protocol_interface);
 };
 
 /*
@@ -191,6 +198,9 @@ uint64_t efi_add_memory_map(uint64_t start, uint64_t pages, int memory_type,
 int efi_memory_init(void);
 /* Adds new or overrides configuration table entry to the system table */
 efi_status_t efi_install_configuration_table(const efi_guid_t *guid, void *table);
+efi_status_t efi_get_protocol(struct efi_object *efiobj,
+			      struct efi_handler *handler,
+			      void **protocol_interface);
 
 #ifdef CONFIG_EFI_LOADER_BOUNCE_BUFFER
 extern void *efi_bounce_buffer;
