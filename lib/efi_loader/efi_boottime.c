@@ -1004,6 +1004,23 @@ out:
 	return EFI_EXIT(r);
 }
 
+efi_status_t efi_get_protocol(struct efi_object *efiobj,
+			      struct efi_handler *handler,
+			      void **protocol_interface)
+{
+	efi_status_t ret = EFI_SUCCESS;
+
+	if (!handler->protocol_interface) {
+		ret = handler->open(efiobj->handle,
+				handler->guid,
+				&handler->protocol_interface);
+	}
+	*protocol_interface =
+		handler->protocol_interface;
+
+	return ret;
+}
+
 static efi_status_t EFIAPI efi_locate_protocol(efi_guid_t *protocol,
 					       void *registration,
 					       void **protocol_interface)
@@ -1026,9 +1043,10 @@ static efi_status_t EFIAPI efi_locate_protocol(efi_guid_t *protocol,
 			if (!handler->guid)
 				continue;
 			if (!guidcmp(handler->guid, protocol)) {
-				*protocol_interface =
-					handler->protocol_interface;
-				return EFI_EXIT(EFI_SUCCESS);
+				efi_status_t ret;
+				ret = efi_get_protocol(efiobj, handler,
+						       protocol_interface);
+				return EFI_EXIT(ret);
 			}
 		}
 	}
@@ -1162,12 +1180,12 @@ static efi_status_t EFIAPI efi_open_protocol(
 			if (!hprotocol)
 				continue;
 			if (!guidcmp(hprotocol, protocol)) {
+				r = EFI_SUCCESS;
 				if (attributes !=
 				    EFI_OPEN_PROTOCOL_TEST_PROTOCOL) {
-					*protocol_interface =
-						handler->protocol_interface;
+					r = efi_get_protocol(efiobj, handler,
+							     protocol_interface);
 				}
-				r = EFI_SUCCESS;
 				goto out;
 			}
 		}
