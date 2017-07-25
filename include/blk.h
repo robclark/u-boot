@@ -8,6 +8,8 @@
 #ifndef BLK_H
 #define BLK_H
 
+#include <efi.h>
+
 #ifdef CONFIG_SYS_64BIT_LBA
 typedef uint64_t lbaint_t;
 #define LBAFlength "ll"
@@ -33,6 +35,14 @@ enum if_type {
 	IF_TYPE_SYSTEMACE,
 
 	IF_TYPE_COUNT,			/* Number of interface types */
+};
+
+enum sig_type {
+	SIG_TYPE_NONE,
+	SIG_TYPE_MBR,
+	SIG_TYPE_GUID,
+
+	SIG_TYPE_COUNT			/* Number of signature types */
 };
 
 /*
@@ -62,6 +72,11 @@ struct blk_desc {
 	char		vendor[40+1];	/* IDE model, SCSI Vendor */
 	char		product[20+1];	/* IDE Serial no, SCSI product */
 	char		revision[8+1];	/* firmware revision */
+	enum sig_type	sig_type;	/* Partition table signature type */
+	union {
+		uint32_t mbr_sig;	/* MBR integer signature */
+		efi_guid_t guid_sig;	/* GPT GUID Signature */
+	};
 #ifdef CONFIG_BLK
 	/*
 	 * For now we have a few functions which take struct blk_desc as a
