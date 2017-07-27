@@ -143,7 +143,7 @@ int efi_disk_register(void);
 /* Called by bootefi to make GOP (graphical) interface available */
 int efi_gop_register(void);
 /* Called by bootefi to make the network interface available */
-int efi_net_register(void **handle);
+int efi_net_register(void);
 /* Called by bootefi to make SMBIOS tables available */
 void efi_smbios_register(void);
 
