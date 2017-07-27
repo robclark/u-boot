@@ -26,6 +26,8 @@
  */
 int fs_set_blk_dev(const char *ifname, const char *dev_part_str, int fstype);
 
+int fs_set_blk_dev2(struct blk_desc *desc, int part);
+
 /*
  * Print the list of files on the partition previously set by fs_set_blk_dev(),
  * in directory "dirname".

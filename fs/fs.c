@@ -247,6 +247,27 @@ int fs_set_blk_dev(const char *ifname, const char *dev_part_str, int fstype)
 	return -1;
 }
 
+/* set current blk device w/ blk_desc + partition # */
+int fs_set_blk_dev2(struct blk_desc *desc, int part)
+{
+	struct fstype_info *info;
+	int ret, i;
+
+	ret = part_get_info(desc, part, &fs_partition);
+	if (ret)
+		return ret;
+	fs_dev_desc = desc;
+
+	for (i = 0, info = fstypes; i < ARRAY_SIZE(fstypes); i++, info++) {
+		if (!info->probe(fs_dev_desc, &fs_partition)) {
+			fs_type = info->fstype;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 static void fs_close(void)
 {
 	struct fstype_info *info = fs_get_info(fs_type);
