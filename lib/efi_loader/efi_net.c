@@ -225,7 +225,7 @@ static void EFIAPI efi_network_timer_notify(struct efi_event *event,
 }
 
 /* This gets called from do_bootefi_exec(). */
-int efi_net_register(void **handle)
+int efi_net_register(void)
 {
 	struct efi_net_obj *netobj;
 	efi_status_t r;
@@ -273,9 +273,6 @@ int efi_net_register(void **handle)
 	/* Hook net up to the device list */
 	list_add_tail(&netobj->parent.link, &efi_obj_list);
 
-	if (handle)
-		*handle = &netobj->net;
-
 	r = efi_create_event(EVT_TIMER | EVT_NOTIFY_SIGNAL, TPL_CALLBACK,
 			     efi_network_timer_notify, NULL,
 			     &network_timer_event);
@@ -288,6 +285,4 @@ int efi_net_register(void **handle)
 	if (r != EFI_SUCCESS)
 		printf("ERROR: Failed to set network timer\n");
 	return r;
-
-	return 0;
 }
