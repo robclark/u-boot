@@ -87,6 +87,8 @@ extern const efi_guid_t efi_guid_device_path;
 extern const efi_guid_t efi_guid_driver_binding_protocol;
 extern const efi_guid_t efi_guid_loaded_image;
 extern const efi_guid_t efi_guid_device_path_to_text_protocol;
+extern const efi_guid_t efi_simple_file_system_protocol_guid;
+extern const efi_guid_t efi_file_info_guid;
 
 extern unsigned int __efi_runtime_start, __efi_runtime_stop;
 extern unsigned int __efi_runtime_rel_start, __efi_runtime_rel_stop;
@@ -168,6 +170,9 @@ int efi_watchdog_register(void);
 /* Called by bootefi to make SMBIOS tables available */
 void efi_smbios_register(void);
 
+struct efi_simple_file_system_protocol *
+efi_fs_from_path(struct efi_device_path *fp);
+
 /* Called by networking code to memorize the dhcp ack package */
 void efi_net_set_dhcp_ack(void *pkt, int len);
 /* Called by efi_set_watchdog_timer to reset the timer */
@@ -208,6 +213,14 @@ efi_status_t EFIAPI efi_open_protocol(
 			void *handle, const efi_guid_t *protocol,
 			void **protocol_interface, void *agent_handle,
 			void *controller_handle, uint32_t attributes);
+
+/* open file system: */
+struct efi_simple_file_system_protocol *efi_simple_file_system(
+		struct blk_desc *desc, int part, struct efi_device_path *dp);
+
+/* open file from device-path: */
+struct efi_file_handle *efi_file_from_path(struct efi_device_path *fp);
+
 
 /* Generic EFI memory allocator, call this to get memory */
 void *efi_alloc(uint64_t len, int memory_type);
