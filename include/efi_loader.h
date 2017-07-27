@@ -203,6 +203,9 @@ efi_status_t efi_install_configuration_table(const efi_guid_t *guid, void *table
 efi_status_t efi_get_protocol(struct efi_object *efiobj,
 			      struct efi_handler *handler,
 			      void **protocol_interface);
+void efi_setup_loaded_image(struct efi_loaded_image *info, struct efi_object *obj,
+			    struct efi_device_path *device_path,
+			    struct efi_device_path *file_path);
 
 #ifdef CONFIG_EFI_LOADER_BOUNCE_BUFFER
 extern void *efi_bounce_buffer;
