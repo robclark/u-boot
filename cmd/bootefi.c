@@ -10,6 +10,7 @@
 #include <command.h>
 #include <dm.h>
 #include <efi_loader.h>
+#include <environment.h>
 #include <errno.h>
 #include <libfdt.h>
 #include <libfdt_env.h>
@@ -371,6 +372,10 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 		part = parse_partnum(devnr);
 
 		bootefi_device_path = efi_dp_from_part(desc, part);
+
+#ifdef CONFIG_ENV_IS_FS
+		env_set_location(desc, part);
+#endif
 	} else {
 #ifdef CONFIG_NET
 		bootefi_device_path = efi_dp_from_eth();

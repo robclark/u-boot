@@ -294,6 +294,7 @@ int do_ext2load(cmd_tbl_t *, int, int, char * const []);
 /* common/cmd_nvedit.c */
 int	env_init     (void);
 void	env_relocate (void);
+void	env_relocate_late(void);
 int	envmatch     (uchar *, int);
 
 /**

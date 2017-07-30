@@ -495,6 +495,12 @@ static int initr_env(void)
 	return 0;
 }
 
+static int initr_env_late(void)
+{
+	env_relocate_late();
+	return 0;
+}
+
 #ifdef CONFIG_SYS_BOOTPARAMS_LEN
 static int initr_malloc_bootparams(void)
 {
@@ -898,6 +904,7 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_PS2KBD
 	initr_kbd,
 #endif
+	initr_env_late,
 	run_main_loop,
 };
 
