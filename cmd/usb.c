@@ -23,7 +23,7 @@
 #include <usb.h>
 
 #ifdef CONFIG_USB_STORAGE
-static int usb_stor_curr_dev = -1; /* current device */
+int usb_stor_curr_dev = -1; /* current device */
 #endif
 #if defined(CONFIG_USB_HOST_ETHER) && !defined(CONFIG_DM_ETH)
 static int __maybe_unused usb_ether_curr_dev = -1; /* current ethernet device */
@@ -570,6 +570,7 @@ static void do_usb_start(void)
 {
 	bootstage_mark_name(BOOTSTAGE_ID_USB_START, "usb_start");
 
+#ifndef CONFIG_ENV_IS_FS
 	if (usb_init() < 0)
 		return;
 
@@ -578,6 +579,7 @@ static void do_usb_start(void)
 	/* try to recognize storage devices immediately */
 	usb_stor_curr_dev = usb_stor_scan(1);
 # endif
+#endif
 #ifndef CONFIG_DM_USB
 # ifdef CONFIG_USB_KEYBOARD
 	drv_usb_kbd_init();

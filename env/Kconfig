@@ -40,6 +40,17 @@ config ENV_IS_NOWHERE
 	  stored. U-Boot will therefore always start up with a default
 	  environment.
 
+config ENV_IS_FS
+	bool "Environment is on any partition"
+	depends on BLK
+	help
+	  Define this if you want to store the environment on the first
+	  partition found containing /uboot.env.  Environment will be saved
+	  to same partition it was loaded from.  This is suitable for boards
+	  which may be booting from various removable devices (ie. sd-card,
+	  usb-disk, etc) and you don't know at the time u-boot is built what
+	  the boot media will be.
+
 config ENV_IS_IN_DATAFLASH
 	bool "Environment in dataflash"
 	depends on !CHAIN_OF_TRUST

@@ -211,6 +211,7 @@ enum env_location {
 	ENVL_SPI_FLASH,
 	ENVL_UBI,
 	ENVL_NOWHERE,
+	ENVL_FS,
 
 	ENVL_COUNT,
 	ENVL_UNKNOWN,
@@ -240,6 +241,17 @@ struct env_driver {
 	 * @return 0 if OK, -ve on error
 	 */
 	int (*load)(void);
+
+	/**
+	 * load_late() - Load the environment from storage late in startup
+	 *
+	 * This method is optional, and can be used as an alternative to
+	 * load() for drivers that need to load environment after other
+	 * drivers have loaded.
+	 *
+	 * @return 0 if OK, -ve on error
+	 */
+	int (*load_late)(void);
 
 	/**
 	 * save() - Save the environment to storage
@@ -328,11 +340,22 @@ int env_get_char(int index);
 int env_load(void);
 
 /**
+ * env_load() - Load the environment from storage late in startup
+ *
+ * @return 0 if OK, -ve on error
+ */
+int env_load_late(void);
+
+/**
  * env_save() - Save the environment to storage
  *
  * @return 0 if OK, -ve on error
  */
 int env_save(void);
+
+#ifdef CONFIG_ENV_IS_FS
+void env_set_location(struct blk_desc *desc, int part);
+#endif
 
 #endif /* DO_DEPS_ONLY */
 

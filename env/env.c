@@ -50,6 +50,8 @@ static enum env_location env_get_default_location(void)
 		return ENVL_UBI;
 	else if IS_ENABLED(CONFIG_ENV_IS_NOWHERE)
 		return ENVL_NOWHERE;
+	else if IS_ENABLED(CONFIG_ENV_IS_FS)
+		return ENVL_FS;
 	else
 		return ENVL_UNKNOWN;
 }
@@ -99,6 +101,25 @@ int env_load(void)
 	if (!drv->load)
 		return 0;
 	ret = drv->load();
+	if (ret) {
+		debug("%s: Environment failed to load (err=%d)\n", __func__,
+		      ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+int env_load_late(void)
+{
+	struct env_driver *drv = env_driver_lookup_default();
+	int ret = 0;
+
+	if (!drv)
+		return -ENODEV;
+	if (!drv->load_late)
+		return 0;
+	ret = drv->load_late();
 	if (ret) {
 		debug("%s: Environment failed to load (err=%d)\n", __func__,
 		      ret);

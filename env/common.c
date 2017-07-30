@@ -284,6 +284,11 @@ void env_relocate(void)
 	}
 }
 
+void env_relocate_late(void)
+{
+	env_load_late();
+}
+
 #if defined(CONFIG_AUTO_COMPLETE) && !defined(CONFIG_SPL_BUILD)
 int env_complete(char *var, int maxv, char *cmdv[], int bufsz, char *buf)
 {

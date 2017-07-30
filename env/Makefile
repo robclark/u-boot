@@ -29,6 +29,7 @@ obj-$(CONFIG_ENV_IS_IN_SPI_FLASH) += sf.o
 obj-$(CONFIG_ENV_IS_IN_REMOTE) += remote.o
 obj-$(CONFIG_ENV_IS_IN_UBI) += ubi.o
 obj-$(CONFIG_ENV_IS_NOWHERE) += nowhere.o
+obj-$(CONFIG_ENV_IS_FS) += fs.o
 endif
 
 ifdef CONFIG_SPL_BUILD
