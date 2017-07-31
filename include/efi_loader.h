@@ -239,6 +239,21 @@ static inline int guidcmp(const efi_guid_t *g1, const efi_guid_t *g2)
 	return memcmp(g1, g2, sizeof(efi_guid_t));
 }
 
+static inline int guidstr(char *s, const efi_guid_t *g)
+{
+	/* unpacked-guid, otherwise we have to have to consider endianess */
+	struct {
+		uint32_t data1;
+		uint16_t data2;
+		uint16_t data3;
+		uint8_t  data4[8];
+	} *ug = (void *)g;
+	return sprintf(s, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+		       ug->data1, ug->data2, ug->data3, ug->data4[0],
+		       ug->data4[1], ug->data4[2], ug->data4[3], ug->data4[4],
+		       ug->data4[5], ug->data4[6], ug->data4[7]);
+}
+
 /*
  * Use these to indicate that your code / data should go into the EFI runtime
  * section and thus still be available when the OS is running
