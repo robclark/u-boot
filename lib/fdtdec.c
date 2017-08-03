@@ -1203,34 +1203,41 @@ int fdtdec_setup_memory_banksize(void)
 }
 #endif
 
+#ifdef CONFIG_OF_SEPARATE
+/*
+ * For CONFIG_OF_SEPARATE, the board may optionally implement this to
+ * provide and/or fixup the fdt.
+ */
+__weak void *board_fdt_blob_setup(void)
+{
+	void *fdt_blob = NULL;
+#ifdef CONFIG_SPL_BUILD
+	/* FDT is at end of BSS unless it is in a different memory region */
+	if (IS_ENABLED(CONFIG_SPL_SEPARATE_BSS))
+		fdt_blob = (ulong *)&_image_binary_end;
+	else
+		fdt_blob = (ulong *)&__bss_end;
+
+#elif defined CONFIG_FIT_EMBED
+	fdt_blob = locate_dtb_in_fit(&_end);
+
+	if (fdt_blob == NULL || fdt_blob <= ((void *)&_end))
+		puts("Failed to find proper dtb in embedded FIT Image\n");
+#else
+	/* FDT is at end of image */
+	fdt_blob = (ulong *)&_end;
+#  endif
+	return fdt_blob;
+}
+#endif
+
 int fdtdec_setup(void)
 {
 #if CONFIG_IS_ENABLED(OF_CONTROL)
 # ifdef CONFIG_OF_EMBED
 	/* Get a pointer to the FDT */
 	gd->fdt_blob = __dtb_dt_begin;
-# elif defined CONFIG_OF_SEPARATE
-#  ifdef CONFIG_SPL_BUILD
-	/* FDT is at end of BSS unless it is in a different memory region */
-	if (IS_ENABLED(CONFIG_SPL_SEPARATE_BSS))
-		gd->fdt_blob = (ulong *)&_image_binary_end;
-	else
-		gd->fdt_blob = (ulong *)&__bss_end;
-
-#  elif defined CONFIG_FIT_EMBED
-	gd->fdt_blob = locate_dtb_in_fit(&_end);
-
-	if (gd->fdt_blob == NULL || gd->fdt_blob <= ((void *)&_end)) {
-		puts("Failed to find proper dtb in embedded FIT Image\n");
-		return -1;
-	}
-
-#  else
-	/* FDT is at end of image */
-	gd->fdt_blob = (ulong *)&_end;
-#  endif
-# elif defined(CONFIG_OF_BOARD)
-	/* Allow the board to override the fdt address. */
+# elif defined(CONFIG_OF_SEPARATE) || defined(CONFIG_OF_BOARD)
 	gd->fdt_blob = board_fdt_blob_setup();
 # elif defined(CONFIG_OF_HOSTFILE)
 	if (sandbox_read_fdt_from_file()) {
