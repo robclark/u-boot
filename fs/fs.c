@@ -119,7 +119,7 @@ static struct fstype_info fstypes[] = {
 		.write = fs_write_unsupported,
 #endif
 		.uuid = fs_uuid_unsupported,
-		.readdir = fs_readdir_unsupported,
+		.readdir = fat_readdir,
 	},
 #endif
 #ifdef CONFIG_FS_EXT4

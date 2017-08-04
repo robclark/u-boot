@@ -14,6 +14,7 @@
 #include <config.h>
 #include <exports.h>
 #include <fat.h>
+#include <fs.h>
 #include <asm/byteorder.h>
 #include <part.h>
 #include <malloc.h>
@@ -575,17 +576,25 @@ static __u8 mkcksum(const char name[8], const char ext[3])
 /*
  * Get the directory entry associated with 'filename' from the directory
  * starting at 'startsect'
+ *
+ * Last two args are only used for dols==LS_READDIR
  */
 __u8 get_dentfromdir_block[MAX_CLUSTSIZE]
 	__aligned(ARCH_DMA_MINALIGN);
 
-static dir_entry *get_dentfromdir(fsdata *mydata, int startsect,
-				  char *filename, dir_entry *retdent,
-				  int dols)
+static dir_entry *get_dentfromdir(fsdata *mydata, char *filename,
+				  dir_entry *retdent, int dols,
+				  loff_t pos, struct fs_dirent *d)
 {
 	__u16 prevcksum = 0xffff;
 	__u32 curclust = START(retdent);
 	int files = 0, dirs = 0;
+	int readdir = 0;
+
+	if (dols == LS_READDIR) {
+		readdir = 1;
+		dols = 0;
+	}
 
 	debug("get_dentfromdir: %s\n", filename);
 
@@ -618,7 +627,7 @@ static dir_entry *get_dentfromdir(fsdata *mydata, int startsect,
 					get_vfatname(mydata, curclust,
 						     get_dentfromdir_block,
 						     dentptr, l_name);
-					if (dols) {
+					if (dols || readdir) {
 						int isdir;
 						char dirc;
 						int doit = 0;
@@ -637,7 +646,14 @@ static dir_entry *get_dentfromdir(fsdata *mydata, int startsect,
 							}
 						}
 						if (doit) {
-							if (dirc == ' ') {
+							if (readdir) {
+								if ((dirs + files - 1) == pos) {
+									strcpy(d->name, l_name);
+									if (!isdir)
+										d->size = FAT2CPU32(dentptr->size);
+									return NULL;
+								}
+							} else if (dirc == ' ') {
 								printf(" %8u   %s%c\n",
 								       FAT2CPU32(dentptr->size),
 									l_name,
@@ -676,7 +692,7 @@ static dir_entry *get_dentfromdir(fsdata *mydata, int startsect,
 			}
 
 			get_name(dentptr, s_name);
-			if (dols) {
+			if (dols || readdir) {
 				int isdir = (dentptr->attr & ATTR_DIR);
 				char dirc;
 				int doit = 0;
@@ -694,7 +710,14 @@ static dir_entry *get_dentfromdir(fsdata *mydata, int startsect,
 				}
 
 				if (doit) {
-					if (dirc == ' ') {
+					if (readdir) {
+						if ((dirs + files - 1) == pos) {
+							strcpy(d->name, s_name);
+							if (!isdir)
+								d->size = FAT2CPU32(dentptr->size);
+							return NULL;
+						}
+					} else if (dirc == ' ') {
 						printf(" %8u   %s%c\n",
 						       FAT2CPU32(dentptr->size),
 							s_name, dirc);
@@ -825,7 +848,7 @@ int do_fat_read_at(const char *filename, loff_t pos, void *buffer,
 	__u32 cursect;
 	int idx, isdir = 0;
 	int files = 0, dirs = 0;
-	int ret = -1;
+	int ret = (dols == LS_READDIR) ? -ENOTDIR : -1;
 	int firsttime;
 	__u32 root_cluster = 0;
 	__u32 read_blk;
@@ -906,7 +929,8 @@ root_reparse:
 		if (!dols)
 			goto exit;
 
-		dols = LS_ROOT;
+		if (dols == LS_YES)
+			dols = LS_ROOT;
 	} else if ((idx = dirdelim(fnamecopy)) >= 0) {
 		isdir = 1;
 		fnamecopy[idx] = '\0';
@@ -1151,8 +1175,6 @@ rootdir_done:
 	firsttime = 1;
 
 	while (isdir) {
-		int startsect = mydata->data_begin
-			+ START(dentptr) * mydata->clust_size;
 		dir_entry dent;
 		char *nextname = NULL;
 
@@ -1177,10 +1199,14 @@ rootdir_done:
 			}
 		}
 
-		if (get_dentfromdir(mydata, startsect, subname, dentptr,
-				     isdir ? 0 : dols) == NULL) {
+		if (get_dentfromdir(mydata, subname, dentptr,
+				    isdir ? 0 : dols, pos, buffer) == NULL) {
 			if (dols && !isdir)
 				*size = 0;
+			if (dols == LS_READDIR) {
+				struct fs_dirent *dent = buffer;
+				ret = dent->name[0] ? 0 : -ENOENT;
+			}
 			goto exit;
 		}
 
@@ -1351,6 +1377,13 @@ int fat_read_file(const char *filename, void *buf, loff_t offset, loff_t len,
 		printf("** Unable to read file %s **\n", filename);
 
 	return ret;
+}
+
+int fat_readdir(const char *filename, loff_t offset, struct fs_dirent *dent)
+{
+	loff_t actread;
+	return do_fat_read_at(filename, offset, dent, sizeof(*dent),
+			      LS_READDIR, 0, &actread);
 }
 
 void fat_close(void)
