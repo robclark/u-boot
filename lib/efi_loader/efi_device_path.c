@@ -402,6 +402,9 @@ struct efi_device_path *efi_dp_from_file(struct blk_desc *desc, int part,
 
 	// TODO efi_device_path_file_path should be variable length:
 	fpsize = sizeof(struct efi_device_path) + 2 * (strlen(path) + 1);
+#ifdef BROKEN_UNALIGNED
+	fpsize = ALIGN(fpsize, 4);
+#endif
 	dpsize += fpsize;
 
 	start = buf = calloc(1, dpsize + sizeof(END));

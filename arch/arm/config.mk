@@ -28,7 +28,7 @@ LLVMS_RELFLAGS		:= $(call cc-option,-mllvm,) \
 			$(call cc-option,-arm-use-movt=0,)
 PLATFORM_RELFLAGS	+= $(LLVM_RELFLAGS)
 
-PLATFORM_CPPFLAGS += -D__ARM__
+PLATFORM_CPPFLAGS += -D__ARM__ -DBROKEN_UNALIGNED
 
 ifdef CONFIG_ARM64
 PLATFORM_ELFFLAGS += -B aarch64 -O elf64-littleaarch64

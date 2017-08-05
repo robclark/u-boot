@@ -284,6 +284,31 @@ struct efi_loaded_image {
 #define DEVICE_PATH_TYPE_END			0x7f
 #  define DEVICE_PATH_SUB_TYPE_END		0xff
 
+/*
+ * Some arch's have trouble with unaligned accesses.  Technically
+ * EFI device-path structs should be byte aligned, and the next node
+ * in the path starts immediately after the previous.  Meaning that
+ * a pointer to an 'struct efi_device_path' is not necessarily word
+ * aligned.  See section 10.3.1 in v2.7 of UEFI spec.
+ *
+ * This causes problems not just for u-boot, but also most/all EFI
+ * payloads loaded by u-boot on these archs.  Fortunately the common
+ * practice for traversing a device path is to rely on the length
+ * field in the header, rather than the specified length of the
+ * particular device path type+subtype.  So the EFI_DP_PAD() macro
+ * will add the specified number of bytes to the tail of device path
+ * structs to pad them to word alignment.
+ *
+ * Technically this is non-compliant, BROKEN_UNALIGNED should *only*
+ * be defined on archs that cannot do unaligned accesses.
+ */
+
+#ifdef BROKEN_UNALIGNED
+#  define EFI_DP_PAD(n)  u8 __pad[n]
+#else
+#  define EFI_DP_PAD(n)
+#endif
+
 struct efi_device_path {
 	u8 type;
 	u8 sub_type;
@@ -318,12 +343,14 @@ struct efi_device_path_usb {
 	struct efi_device_path dp;
 	u8 parent_port_number;
 	u8 usb_interface;
+	EFI_DP_PAD(2);
 } __packed;
 
 struct efi_device_path_mac_addr {
 	struct efi_device_path dp;
 	struct efi_mac_addr mac;
 	u8 if_type;
+	EFI_DP_PAD(3);
 } __packed;
 
 struct efi_device_path_usb_class {
@@ -333,11 +360,13 @@ struct efi_device_path_usb_class {
 	u8 device_class;
 	u8 device_subclass;
 	u8 device_protocol;
+	EFI_DP_PAD(1);
 } __packed;
 
 struct efi_device_path_sd_mmc_path {
 	struct efi_device_path dp;
 	u8 slot_number;
+	EFI_DP_PAD(3);
 } __packed;
 
 #define DEVICE_PATH_TYPE_MEDIA_DEVICE		0x04
@@ -353,6 +382,7 @@ struct efi_device_path_hard_drive_path {
 	u8 partition_signature[16];
 	u8 partmap_type;
 	u8 signature_type;
+	EFI_DP_PAD(1);
 } __packed;
 
 struct efi_device_path_cdrom_path {
