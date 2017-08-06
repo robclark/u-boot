@@ -193,3 +193,25 @@ def test_efi_grub_net(u_boot_console):
 
     # And give us our U-Boot prompt back
     u_boot_console.run_command('')
+
+@pytest.mark.buildconfigspec('cmd_bootefi')
+def test_efi_openbsd_net(u_boot_console):
+    """Run OpenBSD's bootloader via TFTP.
+
+    The bootaa64.efi file is downloaded from the TFTP server and
+    gets executed.
+    """
+
+    addr = fetch_tftp_file(u_boot_console, 'env__efi_loader_openbsd_file')
+
+    u_boot_console.run_command('bootefi %x' % addr, wait_for_prompt=False)
+
+    # Check that bootloader loads properly:
+    u_boot_console.wait_for('boot>')
+
+    # Exit OpenBSD's bootloader back to grub:
+    u_boot_console.run_command('machine exit', wait_for_prompt=False, wait_for_echo=False)
+
+    # And get back to U-Boot prompt:
+    u_boot_console.run_command('', wait_for_prompt=False, wait_for_echo=False)
+    u_boot_console.wait_for('=>')
