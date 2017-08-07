@@ -186,6 +186,9 @@ def test_efi_grub_net(u_boot_console):
         output = u_boot_console.run_command('lsefisystab', wait_for_prompt=False, wait_for_echo=False)
         u_boot_console.wait_for('SMBIOS')
 
+    # Check lsefi and make sure it doesn't generate any alignment faults
+    u_boot_console.run_command('lsefi', wait_for_prompt=False, wait_for_echo=False)
+
     # Then exit cleanly
     u_boot_console.wait_for('grub>')
     output = u_boot_console.run_command('exit', wait_for_prompt=False, wait_for_echo=False)
