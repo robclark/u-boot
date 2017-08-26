@@ -95,6 +95,7 @@ extern unsigned int __efi_runtime_rel_start, __efi_runtime_rel_stop;
 struct efi_handler {
 	const efi_guid_t *guid;
 	void *protocol_interface;
+	struct efi_open_protocol_info_entry open_info[4];
 };
 
 /*

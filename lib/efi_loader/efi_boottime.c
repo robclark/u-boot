@@ -1197,24 +1197,111 @@ static void EFIAPI efi_set_mem(void *buffer, unsigned long size, uint8_t value)
 	memset(buffer, value, size);
 }
 
+static efi_status_t efi_protocol_open(
+			struct efi_handler *protocol,
+			void **protocol_interface, void *agent_handle,
+			void *controller_handle, uint32_t attributes)
+{
+	bool opened_exclusive = false;
+	bool opened_by_driver = false;
+	int i;
+	struct efi_open_protocol_info_entry *open_info;
+	struct efi_open_protocol_info_entry *match = NULL;
+
+	if (attributes !=
+	    EFI_OPEN_PROTOCOL_TEST_PROTOCOL) {
+		*protocol_interface = NULL;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(protocol->open_info); ++i) {
+		open_info = &protocol->open_info[i];
+
+		if (!open_info->open_count)
+			continue;
+		if (open_info->agent_handle == agent_handle) {
+			if ((attributes & EFI_OPEN_PROTOCOL_BY_DRIVER) &&
+			    (open_info->attributes == attributes))
+				return EFI_ALREADY_STARTED;
+			if (open_info->controller_handle == controller_handle)
+				match = open_info;
+		}
+		if (open_info->attributes & EFI_OPEN_PROTOCOL_EXCLUSIVE)
+			opened_exclusive = true;
+	}
+
+	if (attributes &
+	    (EFI_OPEN_PROTOCOL_EXCLUSIVE | EFI_OPEN_PROTOCOL_BY_DRIVER) &&
+	    opened_exclusive)
+		return EFI_ACCESS_DENIED;
+
+	if (attributes & EFI_OPEN_PROTOCOL_EXCLUSIVE) {
+		for (i = 0; i < ARRAY_SIZE(protocol->open_info); ++i) {
+			open_info = &protocol->open_info[i];
+
+			if (!open_info->open_count)
+				continue;
+			if (open_info->attributes ==
+					EFI_OPEN_PROTOCOL_BY_DRIVER)
+				EFI_CALL(efi_disconnect_controller(
+						open_info->controller_handle,
+						open_info->agent_handle,
+						NULL));
+		}
+		opened_by_driver = false;
+		for (i = 0; i < ARRAY_SIZE(protocol->open_info); ++i) {
+			open_info = &protocol->open_info[i];
+
+			if (!open_info->open_count)
+				continue;
+			if (open_info->attributes & EFI_OPEN_PROTOCOL_BY_DRIVER)
+				opened_by_driver = true;
+		}
+		if (opened_by_driver)
+			return EFI_ACCESS_DENIED;
+		if (match && !match->open_count)
+			match = NULL;
+	}
+
+	/*
+	 * Find an empty slot.
+	 */
+	if (!match) {
+		for (i = 0; i < ARRAY_SIZE(protocol->open_info); ++i) {
+			open_info = &protocol->open_info[i];
+
+			if (!open_info->open_count) {
+				match = open_info;
+				break;
+			}
+		}
+	}
+	if (!match)
+		return EFI_OUT_OF_RESOURCES;
+
+	match->agent_handle = agent_handle;
+	match->controller_handle = controller_handle;
+	match->attributes = attributes;
+	match->open_count++;
+	*protocol_interface = protocol->protocol_interface;
+
+	return EFI_SUCCESS;
+}
+
 static efi_status_t EFIAPI efi_open_protocol(
 			void *handle, efi_guid_t *protocol,
 			void **protocol_interface, void *agent_handle,
 			void *controller_handle, uint32_t attributes)
 {
-	struct list_head *lhandle;
-	int i;
+	struct efi_handler *handler;
 	efi_status_t r = EFI_INVALID_PARAMETER;
 
 	EFI_ENTRY("%p, %p, %p, %p, %p, 0x%x", handle, protocol,
 		  protocol_interface, agent_handle, controller_handle,
 		  attributes);
 
-	if (!handle || !protocol ||
-	    (!protocol_interface && attributes !=
-	     EFI_OPEN_PROTOCOL_TEST_PROTOCOL)) {
+	if (!protocol_interface && attributes !=
+	    EFI_OPEN_PROTOCOL_TEST_PROTOCOL)
 		goto out;
-	}
 
 	EFI_PRINT_GUID("protocol", protocol);
 
@@ -1238,33 +1325,12 @@ static efi_status_t EFIAPI efi_open_protocol(
 		goto out;
 	}
 
-	list_for_each(lhandle, &efi_obj_list) {
-		struct efi_object *efiobj;
-		efiobj = list_entry(lhandle, struct efi_object, link);
+	r = efi_search_protocol(handle, protocol, &handler);
+	if (r != EFI_SUCCESS)
+		goto out;
 
-		if (efiobj->handle != handle)
-			continue;
-
-		for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
-			struct efi_handler *handler = &efiobj->protocols[i];
-			const efi_guid_t *hprotocol = handler->guid;
-			if (!hprotocol)
-				continue;
-			if (!guidcmp(hprotocol, protocol)) {
-				if (attributes !=
-				    EFI_OPEN_PROTOCOL_TEST_PROTOCOL) {
-					*protocol_interface =
-						handler->protocol_interface;
-				}
-				r = EFI_SUCCESS;
-				goto out;
-			}
-		}
-		goto unsupported;
-	}
-
-unsupported:
-	r = EFI_UNSUPPORTED;
+	r = efi_protocol_open(handler, protocol_interface, agent_handle,
+			      controller_handle, attributes);
 out:
 	return EFI_EXIT(r);
 }
