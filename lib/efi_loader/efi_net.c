@@ -146,6 +146,8 @@ static efi_status_t EFIAPI efi_net_transmit(struct efi_simple_network *this,
 	EFI_ENTRY("%p, %lx, %lx, %p, %p, %p, %p", this, header_size,
 		  buffer_size, buffer, src_addr, dest_addr, protocol);
 
+	efi_timer_check();
+
 	if (header_size) {
 		/* We would need to create the header if header_size != 0 */
 		return EFI_EXIT(EFI_INVALID_PARAMETER);
@@ -177,9 +179,7 @@ static efi_status_t EFIAPI efi_net_receive(struct efi_simple_network *this,
 	EFI_ENTRY("%p, %p, %p, %p, %p, %p, %p", this, header_size,
 		  buffer_size, buffer, src_addr, dest_addr, protocol);
 
-	push_packet = efi_net_push;
-	eth_rx();
-	push_packet = NULL;
+	efi_timer_check();
 
 	if (!new_rx_packet)
 		return EFI_EXIT(EFI_NOT_READY);
@@ -207,6 +207,21 @@ void efi_net_set_dhcp_ack(void *pkt, int len)
 	memcpy(dhcp_ack, pkt, min(len, maxsize));
 }
 
+static struct efi_event *network_timer_event;
+
+static void EFIAPI efi_network_timer_notify(struct efi_event *event,
+					    void *context)
+{
+	EFI_ENTRY("%p, %p", event, context);
+
+	if (!new_rx_packet) {
+		push_packet = efi_net_push;
+		eth_rx();
+		push_packet = NULL;
+	}
+	EFI_EXIT(EFI_SUCCESS);
+}
+
 /* This gets called from do_bootefi_exec(). */
 int efi_net_register(void **handle)
 {
@@ -221,6 +236,7 @@ int efi_net_register(void **handle)
 		.dp.sub_type = DEVICE_PATH_SUB_TYPE_END,
 		.dp.length = sizeof(dp_end),
 	};
+	efi_status_t r;
 
 	if (!eth_get_dev()) {
 		/* No eth device active, don't expose any */
@@ -269,6 +285,19 @@ int efi_net_register(void **handle)
 
 	if (handle)
 		*handle = &netobj->net;
+
+	r = efi_create_event(EVT_TIMER | EVT_NOTIFY_SIGNAL, TPL_CALLBACK,
+			     efi_network_timer_notify, NULL,
+			     &network_timer_event);
+	if (r != EFI_SUCCESS) {
+		printf("ERROR: Failed to register network event\n");
+		return r;
+	}
+	/* Network is time critical, call in every timer cyle */
+	r = efi_set_timer(network_timer_event, EFI_TIMER_PERIODIC, 0);
+	if (r != EFI_SUCCESS)
+		printf("ERROR: Failed to set network timer\n");
+	return r;
 
 	return 0;
 }
