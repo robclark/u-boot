@@ -487,6 +487,31 @@ static efi_status_t EFIAPI efi_check_event(struct efi_event *event)
 	return EFI_EXIT(EFI_NOT_READY);
 }
 
+static efi_status_t efi_search_protocol(void *handle, efi_guid_t *protocol_guid,
+					struct efi_handler **handler)
+{
+	struct efi_object *efiobj;
+	size_t i;
+	struct efi_handler *protocol;
+
+	if (!handle || !protocol_guid)
+		return EFI_INVALID_PARAMETER;
+	efiobj = efi_search_obj(handle);
+	if (!efiobj)
+		return EFI_INVALID_PARAMETER;
+	for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
+		protocol = &efiobj->protocols[i];
+		if (!protocol->guid)
+			continue;
+		if (!guidcmp(protocol->guid, protocol_guid)) {
+			if (handler)
+				*handler = protocol;
+			return EFI_SUCCESS;
+		}
+	}
+	return EFI_NOT_FOUND;
+}
+
 static efi_status_t EFIAPI efi_install_protocol_interface(void **handle,
 			efi_guid_t *protocol, int protocol_interface_type,
 			void *protocol_interface)
