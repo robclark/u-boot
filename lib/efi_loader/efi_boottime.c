@@ -633,6 +633,7 @@ static int efi_search(enum efi_locate_search_type search_type,
 	case all_handles:
 		return 0;
 	case by_register_notify:
+		/* RegisterProtocolNotify is not implemented yet */
 		return -1;
 	case by_protocol:
 		for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
@@ -651,16 +652,38 @@ static efi_status_t efi_locate_handle(
 			efi_guid_t *protocol, void *search_key,
 			unsigned long *buffer_size, efi_handle_t *buffer)
 {
-	struct list_head *lhandle;
+	struct efi_object *efiobj;
 	unsigned long size = 0;
 
+	/* Check parameters */
+	switch (search_type) {
+	case all_handles:
+		break;
+	case by_register_notify:
+		if (!search_key)
+			return EFI_INVALID_PARAMETER;
+		/* RegisterProtocolNotify is not implemented yet */
+		return EFI_UNSUPPORTED;
+	case by_protocol:
+		if (!protocol)
+			return EFI_INVALID_PARAMETER;
+		break;
+	default:
+		return EFI_INVALID_PARAMETER;
+	}
+
+	/*
+	 * efi_locate_handle_buffer uses this function for
+	 * the calculation of the necessary buffer size.
+	 * So do not require a buffer for buffersize == 0.
+	 */
+	if (!buffer_size || (*buffer_size && !buffer))
+		return EFI_INVALID_PARAMETER;
+
 	/* Count how much space we need */
-	list_for_each(lhandle, &efi_obj_list) {
-		struct efi_object *efiobj;
-		efiobj = list_entry(lhandle, struct efi_object, link);
-		if (!efi_search(search_type, protocol, search_key, efiobj)) {
+	list_for_each_entry(efiobj, &efi_obj_list, link) {
+		if (!efi_search(search_type, protocol, search_key, efiobj))
 			size += sizeof(void*);
-		}
 	}
 
 	if (*buffer_size < size) {
@@ -673,12 +696,9 @@ static efi_status_t efi_locate_handle(
 		return EFI_NOT_FOUND;
 
 	/* Then fill the array */
-	list_for_each(lhandle, &efi_obj_list) {
-		struct efi_object *efiobj;
-		efiobj = list_entry(lhandle, struct efi_object, link);
-		if (!efi_search(search_type, protocol, search_key, efiobj)) {
+	list_for_each_entry(efiobj, &efi_obj_list, link) {
+		if (!efi_search(search_type, protocol, search_key, efiobj))
 			*(buffer++) = efiobj->handle;
-		}
 	}
 
 	return EFI_SUCCESS;
