@@ -1028,9 +1028,62 @@ static efi_status_t EFIAPI efi_open_protocol_information(efi_handle_t handle,
 			struct efi_open_protocol_info_entry **entry_buffer,
 			unsigned long *entry_count)
 {
+	unsigned long buffer_size;
+	unsigned long count;
+	struct efi_handler *handler;
+	size_t i;
+	efi_status_t r;
+
 	EFI_ENTRY("%p, %p, %p, %p", handle, protocol, entry_buffer,
 		  entry_count);
-	return EFI_EXIT(EFI_NOT_FOUND);
+
+	/* Check parameters */
+	if (!handle || !protocol || !entry_buffer) {
+		r = EFI_INVALID_PARAMETER;
+		goto out;
+	}
+
+	/* Find the protocol */
+	r = efi_search_protocol(handle, protocol, &handler);
+	if (r != EFI_SUCCESS)
+		goto out;
+
+	*entry_buffer = NULL;
+
+	/* Count entries */
+	count = 0;
+	for (i = 0; i < ARRAY_SIZE(handler->open_info); ++i) {
+		struct efi_open_protocol_info_entry *open_info =
+			&handler->open_info[i];
+
+		if (open_info->open_count)
+			++count;
+	}
+	*entry_count = count;
+	if (!count) {
+		r = EFI_SUCCESS;
+		goto out;
+	}
+
+	/* Copy entries */
+	buffer_size = count * sizeof(struct efi_open_protocol_info_entry);
+	r = efi_allocate_pool(EFI_ALLOCATE_ANY_PAGES, buffer_size,
+			      (void **)entry_buffer);
+	if (r != EFI_SUCCESS)
+		goto out;
+	count = 0;
+	for (i = 0; i < ARRAY_SIZE(handler->open_info); ++i) {
+		struct efi_open_protocol_info_entry *open_info =
+			&handler->open_info[i];
+
+		if (!open_info->open_count)
+			continue;
+		(*entry_buffer)[count] = *open_info;
+		++count;
+	}
+
+out:
+	return EFI_EXIT(r);
 }
 
 static efi_status_t EFIAPI efi_protocols_per_handle(void *handle,
