@@ -81,9 +81,7 @@ static efi_status_t EFIAPI efi_net_receive_filters(
 	EFI_ENTRY("%p, %x, %x, %x, %lx, %p", this, enable, disable,
 		  reset_mcast_filter, mcast_filter_count, mcast_filter);
 
-	/* XXX Do we care? */
-
-	return EFI_EXIT(EFI_SUCCESS);
+	return EFI_EXIT(EFI_UNSUPPORTED);
 }
 
 static efi_status_t EFIAPI efi_net_station_address(
@@ -92,7 +90,7 @@ static efi_status_t EFIAPI efi_net_station_address(
 {
 	EFI_ENTRY("%p, %x, %p", this, reset, new_mac);
 
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+	return EFI_EXIT(EFI_UNSUPPORTED);
 }
 
 static efi_status_t EFIAPI efi_net_statistics(struct efi_simple_network *this,
@@ -101,7 +99,7 @@ static efi_status_t EFIAPI efi_net_statistics(struct efi_simple_network *this,
 {
 	EFI_ENTRY("%p, %x, %p, %p", this, reset, stat_size, stat_table);
 
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+	return EFI_EXIT(EFI_UNSUPPORTED);
 }
 
 static efi_status_t EFIAPI efi_net_mcastiptomac(struct efi_simple_network *this,
@@ -121,7 +119,7 @@ static efi_status_t EFIAPI efi_net_nvdata(struct efi_simple_network *this,
 	EFI_ENTRY("%p, %x, %lx, %lx, %p", this, read_write, offset, buffer_size,
 		  buffer);
 
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+	return EFI_EXIT(EFI_UNSUPPORTED);
 }
 
 static efi_status_t EFIAPI efi_net_get_status(struct efi_simple_network *this,
