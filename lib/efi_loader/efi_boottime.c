@@ -1470,6 +1470,7 @@ static efi_status_t EFIAPI efi_exit_boot_services(void *image_handle,
 	bootm_disable_interrupts();
 
 	/* Give the payload some time to boot */
+	efi_set_watchdog(0);
 	WATCHDOG_RESET();
 
 	return EFI_EXIT(EFI_SUCCESS);
@@ -1529,7 +1530,7 @@ static efi_status_t EFIAPI efi_set_watchdog_timer(unsigned long timeout,
 {
 	EFI_ENTRY("%ld, 0x%"PRIx64", %ld, %p", timeout, watchdog_code,
 		  data_size, watchdog_data);
-	return efi_unsupported(__func__);
+	return EFI_EXIT(efi_set_watchdog(timeout));
 }
 
 /*
