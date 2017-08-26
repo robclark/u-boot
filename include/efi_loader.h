@@ -161,11 +161,15 @@ int efi_disk_register(void);
 int efi_gop_register(void);
 /* Called by bootefi to make the network interface available */
 int efi_net_register(void **handle);
+/* Called by bootefi to make the watchdog available */
+int efi_watchdog_register(void);
 /* Called by bootefi to make SMBIOS tables available */
 void efi_smbios_register(void);
 
 /* Called by networking code to memorize the dhcp ack package */
 void efi_net_set_dhcp_ack(void *pkt, int len);
+/* Called by efi_set_watchdog_timer to reset the timer */
+efi_status_t efi_set_watchdog(unsigned long timeout);
 
 /* Called from places to check whether a timer expired */
 void efi_timer_check(void);
