@@ -516,9 +516,12 @@ static efi_status_t EFIAPI efi_install_protocol_interface(void **handle,
 			efi_guid_t *protocol, int protocol_interface_type,
 			void *protocol_interface)
 {
-	struct list_head *lhandle;
 	int i;
 	efi_status_t r;
+	struct efi_object *efiobj;
+
+	EFI_ENTRY("%p, %p, %d, %p", handle, protocol, protocol_interface_type,
+		  protocol_interface);
 
 	if (!handle || !protocol ||
 	    protocol_interface_type != EFI_NATIVE_INTERFACE) {
@@ -531,54 +534,36 @@ static efi_status_t EFIAPI efi_install_protocol_interface(void **handle,
 		r = EFI_OUT_OF_RESOURCES;
 		goto out;
 	}
+
 	/* Find object. */
-	list_for_each(lhandle, &efi_obj_list) {
-		struct efi_object *efiobj;
-		efiobj = list_entry(lhandle, struct efi_object, link);
-
-		if (efiobj->handle != *handle)
-			continue;
-		/* Check if protocol is already installed on the handle. */
-		for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
-			struct efi_handler *handler = &efiobj->protocols[i];
-
-			if (!handler->guid)
-				continue;
-			if (!guidcmp(handler->guid, protocol)) {
-				r = EFI_INVALID_PARAMETER;
-				goto out;
-			}
-		}
-		/* Install protocol in first empty slot. */
-		for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
-			struct efi_handler *handler = &efiobj->protocols[i];
-
-			if (handler->guid)
-				continue;
-
-			handler->guid = protocol;
-			handler->protocol_interface = protocol_interface;
-			r = EFI_SUCCESS;
-			goto out;
-		}
-		r = EFI_OUT_OF_RESOURCES;
+	efiobj = efi_search_obj(*handle);
+	if (!efiobj) {
+		r = EFI_INVALID_PARAMETER;
 		goto out;
 	}
-	r = EFI_INVALID_PARAMETER;
+
+	/* Check if protocol is already installed on the handle. */
+	r = efi_search_protocol(*handle, protocol, NULL);
+	if (r == EFI_SUCCESS) {
+		r = EFI_INVALID_PARAMETER;
+		goto out;
+	}
+
+	/* Install protocol in first empty slot. */
+	for (i = 0; i < ARRAY_SIZE(efiobj->protocols); i++) {
+		struct efi_handler *handler = &efiobj->protocols[i];
+
+		if (handler->guid)
+			continue;
+
+		handler->guid = protocol;
+		handler->protocol_interface = protocol_interface;
+		r = EFI_SUCCESS;
+		goto out;
+	}
+	r = EFI_OUT_OF_RESOURCES;
 out:
-	return r;
-}
-
-static efi_status_t EFIAPI efi_install_protocol_interface_ext(void **handle,
-			efi_guid_t *protocol, int protocol_interface_type,
-			void *protocol_interface)
-{
-	EFI_ENTRY("%p, %p, %d, %p", handle, protocol, protocol_interface_type,
-		  protocol_interface);
-
-	return EFI_EXIT(efi_install_protocol_interface(handle, protocol,
-						       protocol_interface_type,
-						       protocol_interface));
+	return EFI_EXIT(r);
 }
 
 static efi_status_t EFIAPI efi_reinstall_protocol_interface(void *handle,
@@ -1160,9 +1145,10 @@ static efi_status_t EFIAPI efi_install_multiple_protocol_interfaces(
 		if (!protocol)
 			break;
 		protocol_interface = va_arg(argptr, void*);
-		r = efi_install_protocol_interface(handle, protocol,
-						   EFI_NATIVE_INTERFACE,
-						   protocol_interface);
+		r = EFI_CALL(efi_install_protocol_interface(
+						handle, protocol,
+						EFI_NATIVE_INTERFACE,
+						protocol_interface));
 		if (r != EFI_SUCCESS)
 			break;
 		i++;
@@ -1310,7 +1296,7 @@ static const struct efi_boot_services efi_boot_services = {
 	.signal_event = efi_signal_event_ext,
 	.close_event = efi_close_event,
 	.check_event = efi_check_event,
-	.install_protocol_interface = efi_install_protocol_interface_ext,
+	.install_protocol_interface = efi_install_protocol_interface,
 	.reinstall_protocol_interface = efi_reinstall_protocol_interface,
 	.uninstall_protocol_interface = efi_uninstall_protocol_interface_ext,
 	.handle_protocol = efi_handle_protocol,
