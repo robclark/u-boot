@@ -259,6 +259,7 @@ int efi_net_register(void **handle)
 	netobj->dp_end = dp_end;
 	memcpy(netobj->dp_mac.mac.addr, eth_get_ethaddr(), 6);
 	memcpy(netobj->net_mode.current_address.mac_addr, eth_get_ethaddr(), 6);
+	netobj->net_mode.hwaddr_size = 6;
 	netobj->net_mode.max_packet_size = PKTSIZE;
 
 	netobj->pxe.mode = &netobj->pxe_mode;
