@@ -1095,9 +1095,84 @@ static efi_status_t EFIAPI efi_disconnect_controller(void *controller_handle,
 						     void *driver_image_handle,
 						     void *child_handle)
 {
+	struct efi_driver_binding_protocol *binding_protocol;
+	efi_handle_t child_handle_buffer;
+	unsigned long driver_count;
+	efi_handle_t *driver_handle_buffer;
+	size_t i;
+	UINTN number_of_children;
+	efi_status_t r;
+	size_t stop_count = 0;
+
 	EFI_ENTRY("%p, %p, %p", controller_handle, driver_image_handle,
 		  child_handle);
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+
+	if (!efi_search_obj(controller_handle)) {
+		r = EFI_INVALID_PARAMETER;
+		goto out;
+	}
+
+	/* Create list of driver handles */
+	if (driver_image_handle) {
+		driver_handle_buffer = &driver_image_handle,
+		driver_count = 1;
+		/* Check that the handle supports driver binding protocol */
+		r = efi_search_protocol(driver_image_handle,
+					&efi_guid_driver_binding_protocol,
+					NULL);
+	} else {
+		/* Get buffer with all handles with driver binding protocol */
+		r = EFI_CALL(efi_locate_handle_buffer(
+			     by_protocol, &efi_guid_driver_binding_protocol,
+			     NULL, &driver_count, &driver_handle_buffer));
+	}
+	if (r != EFI_SUCCESS)
+		goto out;
+
+	/* Create list of child handles */
+	if (child_handle) {
+		number_of_children = 1;
+		child_handle_buffer = &child_handle;
+	} else {
+		/*
+		 * We do not fully support child handles.
+		 *
+		 * It is unclear from which handle and which protocols the
+		 * list of child controllers should be collected.
+		 */
+		number_of_children = 0;
+		child_handle_buffer = NULL;
+	}
+
+	for (i = 0; i < driver_count; ++i) {
+		r = EFI_CALL(efi_open_protocol(
+			     driver_handle_buffer[i],
+			     &efi_guid_driver_binding_protocol,
+			     (void **)&binding_protocol,
+			     driver_handle_buffer[i], NULL,
+			     EFI_OPEN_PROTOCOL_GET_PROTOCOL));
+		if (r != EFI_SUCCESS)
+			continue;
+
+		r = EFI_CALL(binding_protocol->stop(binding_protocol,
+						    controller_handle,
+						    number_of_children,
+						    child_handle_buffer));
+		if (r == EFI_SUCCESS)
+			++stop_count;
+		EFI_CALL(efi_close_protocol(driver_handle_buffer[i],
+					    &efi_guid_driver_binding_protocol,
+					    driver_handle_buffer[i], NULL));
+	}
+
+	if (driver_image_handle)
+		efi_free_pool(driver_handle_buffer);
+	if (stop_count)
+		r = EFI_SUCCESS;
+	else
+		r = EFI_NOT_FOUND;
+out:
+	return EFI_EXIT(r);
 }
 
 efi_status_t EFIAPI efi_close_protocol(void *handle, const efi_guid_t *protocol,
