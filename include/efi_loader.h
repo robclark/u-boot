@@ -192,6 +192,15 @@ efi_status_t efi_set_timer(struct efi_event *event, enum efi_timer_delay type,
 			   uint64_t trigger_time);
 /* Call this to signal an event */
 void efi_signal_event(struct efi_event *event);
+/* Call this with EFI_CALL to close a protocol */
+efi_status_t EFIAPI efi_close_protocol(void *handle, efi_guid_t *protocol,
+				       void *agent_handle,
+				       void *controller_handle);
+/* Call this with EFI_CALL to open a protocol */
+efi_status_t EFIAPI efi_open_protocol(
+			void *handle, efi_guid_t *protocol,
+			void **protocol_interface, void *agent_handle,
+			void *controller_handle, uint32_t attributes);
 
 /* Generic EFI memory allocator, call this to get memory */
 void *efi_alloc(uint64_t len, int memory_type);

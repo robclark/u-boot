@@ -982,10 +982,9 @@ static efi_status_t EFIAPI efi_disconnect_controller(void *controller_handle,
 	return EFI_EXIT(EFI_INVALID_PARAMETER);
 }
 
-static efi_status_t EFIAPI efi_close_protocol(void *handle,
-					      efi_guid_t *protocol,
-					      void *agent_handle,
-					      void *controller_handle)
+efi_status_t EFIAPI efi_close_protocol(void *handle, efi_guid_t *protocol,
+				       void *agent_handle,
+				       void *controller_handle)
 {
 	struct efi_handler *handler;
 	size_t i;
@@ -1371,7 +1370,7 @@ static efi_status_t efi_protocol_open(
 	return EFI_SUCCESS;
 }
 
-static efi_status_t EFIAPI efi_open_protocol(
+efi_status_t EFIAPI efi_open_protocol(
 			void *handle, efi_guid_t *protocol,
 			void **protocol_interface, void *agent_handle,
 			void *controller_handle, uint32_t attributes)
