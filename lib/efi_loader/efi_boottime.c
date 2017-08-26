@@ -21,6 +21,14 @@ DECLARE_GLOBAL_DATA_PTR;
 /* Task priority level */
 static UINTN efi_tpl = TPL_APPLICATION;
 
+static efi_status_t EFIAPI efi_locate_protocol(const efi_guid_t *protocol,
+					       void *registration,
+					       void **protocol_interface);
+static efi_status_t EFIAPI efi_locate_handle_buffer(
+			enum efi_locate_search_type search_type,
+			const efi_guid_t *protocol, void *search_key,
+			unsigned long *no_handles, efi_handle_t **buffer);
+
 /* This list contains all the EFI objects our payload has access to */
 LIST_HEAD(efi_obj_list);
 
@@ -51,6 +59,9 @@ static struct efi_configuration_table __efi_runtime_data efi_conf_table[2];
  */
 static volatile void *efi_gd, *app_gd;
 #endif
+
+const efi_guid_t efi_guid_driver_binding_protocol =
+			EFI_DRIVER_BINDING_PROTOCOL_GUID;
 
 static int entry_count;
 static int nesting_level;
@@ -963,15 +974,121 @@ static efi_status_t EFIAPI efi_set_watchdog_timer(unsigned long timeout,
 	return efi_unsupported(__func__);
 }
 
+static efi_status_t efi_bind_controller(
+			efi_handle_t controller_handle,
+			efi_handle_t driver_image_handle,
+			struct efi_device_path *remain_device_path)
+{
+	struct efi_driver_binding_protocol *binding_protocol;
+	efi_status_t r;
+
+	r = EFI_CALL(efi_open_protocol(driver_image_handle,
+				       &efi_guid_driver_binding_protocol,
+				       (void **)&binding_protocol,
+				       driver_image_handle, NULL,
+				       EFI_OPEN_PROTOCOL_GET_PROTOCOL));
+	if (r != EFI_SUCCESS)
+		return r;
+	r = EFI_CALL(binding_protocol->supported(binding_protocol,
+						 controller_handle,
+						 remain_device_path));
+	if (r == EFI_SUCCESS)
+		r = EFI_CALL(binding_protocol->start(binding_protocol,
+						     controller_handle,
+						     remain_device_path));
+	EFI_CALL(efi_close_protocol(driver_image_handle,
+				    &efi_guid_driver_binding_protocol,
+				    driver_image_handle, NULL));
+	return r;
+}
+
+static efi_status_t efi_connect_single_controller(
+			efi_handle_t controller_handle,
+			efi_handle_t *driver_image_handle,
+			struct efi_device_path *remain_device_path)
+{
+	efi_handle_t *buffer;
+	unsigned long count;
+	size_t i;
+	efi_status_t r;
+	size_t connected = 0;
+
+	/* Get buffer with all handles with driver binding protocol */
+	r = EFI_CALL(efi_locate_handle_buffer(by_protocol,
+					      &efi_guid_driver_binding_protocol,
+					      NULL, &count, &buffer));
+	if (r != EFI_SUCCESS)
+		return r;
+
+	/*  Context Override */
+	if (driver_image_handle) {
+		for (; *driver_image_handle; ++driver_image_handle) {
+			for (i = 0; i < count; ++i) {
+				if (buffer[i] == *driver_image_handle) {
+					buffer[i] = NULL;
+					r = efi_bind_controller(
+							controller_handle,
+							*driver_image_handle,
+							remain_device_path);
+					if (r == EFI_SUCCESS)
+						++connected;
+				}
+			}
+		}
+	}
+
+	/*
+	 * Some overrides are not yet implemented:
+	 * Platform Driver Override
+	 * Driver Family Override Search
+	 * Driver Family Override Search
+	 * Bus Specific Driver Override
+	 */
+
+	/* Driver Binding Search */
+	for (i = 0; i < count; ++i) {
+		if (buffer[i]) {
+			r = efi_bind_controller(controller_handle,
+						buffer[i],
+						remain_device_path);
+			if (r == EFI_SUCCESS)
+				++connected;
+		}
+	}
+
+	efi_free_pool(buffer);
+	if (!connected)
+		return EFI_NOT_FOUND;
+	return EFI_SUCCESS;
+}
+
 static efi_status_t EFIAPI efi_connect_controller(
 			efi_handle_t controller_handle,
 			efi_handle_t *driver_image_handle,
 			struct efi_device_path *remain_device_path,
 			bool recursive)
 {
+	efi_status_t r;
+
 	EFI_ENTRY("%p, %p, %p, %d", controller_handle, driver_image_handle,
 		  remain_device_path, recursive);
-	return EFI_EXIT(EFI_NOT_FOUND);
+
+	if (!controller_handle) {
+		r = EFI_INVALID_PARAMETER;
+		goto out;
+	}
+
+	if (recursive) {
+		r = EFI_UNSUPPORTED;
+		goto out;
+	}
+
+	r = efi_connect_single_controller(controller_handle,
+					  driver_image_handle,
+					  remain_device_path);
+
+out:
+	return EFI_EXIT(r);
 }
 
 static efi_status_t EFIAPI efi_disconnect_controller(void *controller_handle,
