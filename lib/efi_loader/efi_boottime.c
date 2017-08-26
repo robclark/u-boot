@@ -863,13 +863,11 @@ static efi_status_t EFIAPI efi_exit(efi_handle_t image_handle,
 	panic("EFI application exited");
 }
 
-static struct efi_object *efi_search_obj(void *handle)
+struct efi_object *efi_search_obj(void *handle)
 {
-	struct list_head *lhandle;
+	struct efi_object *efiobj;
 
-	list_for_each(lhandle, &efi_obj_list) {
-		struct efi_object *efiobj;
-		efiobj = list_entry(lhandle, struct efi_object, link);
+	list_for_each_entry(efiobj, &efi_obj_list, link) {
 		if (efiobj->handle == handle)
 			return efiobj;
 	}
