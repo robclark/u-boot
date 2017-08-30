@@ -83,6 +83,7 @@ extern const struct efi_device_path_utilities_protocol efi_device_path_utilities
 extern const struct efi_hii_config_routing_protocol efi_hii_config_routing;
 extern const struct efi_hii_database_protocol efi_hii_database;
 extern const struct efi_hii_string_protocol efi_hii_string;
+extern const struct efi_unicode_collation_protocol efi_unicode_collation;
 
 uint16_t *efi_dp_str(struct efi_device_path *dp);
 
@@ -98,6 +99,7 @@ extern const efi_guid_t efi_guid_device_path_utilities_protocol;
 extern const efi_guid_t efi_guid_hii_config_routing_protocol;
 extern const efi_guid_t efi_guid_hii_database_protocol;
 extern const efi_guid_t efi_guid_hii_string_protocol;
+extern const efi_guid_t efi_guid_unicode_collation_protocol2;
 
 extern unsigned int __efi_runtime_start, __efi_runtime_stop;
 extern unsigned int __efi_runtime_rel_start, __efi_runtime_rel_stop;

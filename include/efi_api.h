@@ -740,6 +740,39 @@ struct efi_hii_string_protocol
 		UINTN *secondary_languages_size);
 };
 
+#define EFI_UNICODE_COLLATION_PROTOCOL2_GUID \
+	EFI_GUID(0xa4c751fc, 0x23ae, 0x4c3e, \
+		 0x92, 0xe9, 0x49, 0x64, 0xcf, 0x63, 0xf3, 0x49)
+
+struct efi_unicode_collation_protocol
+{
+	INTN(EFIAPI *stri_coll)(
+		struct efi_unicode_collation_protocol *this,
+		efi_string_t s1,
+		efi_string_t s2);
+	bool(EFIAPI *metai_match)(
+		struct efi_unicode_collation_protocol *this,
+		efi_string_t string,
+		efi_string_t pattern);
+	void(EFIAPI *str_lwr)(
+		struct efi_unicode_collation_protocol *this,
+		efi_string_t string);
+	void(EFIAPI *str_upr)(
+		struct efi_unicode_collation_protocol *this,
+		efi_string_t string);
+	void(EFIAPI *fat_to_str)(
+		struct efi_unicode_collation_protocol *this,
+		UINTN fat_size,
+		uint8_t *fat,
+		efi_string_t string);
+	bool(EFIAPI *str_to_fat)(
+		struct efi_unicode_collation_protocol *this,
+		efi_string_t string,
+		UINTN fat_size,
+		uint8_t *fat);
+	uint8_t *supported_languages;
+};
+
 #define EFI_GOP_GUID \
 	EFI_GUID(0x9042a9de, 0x23dc, 0x4a38, \
 		 0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a)

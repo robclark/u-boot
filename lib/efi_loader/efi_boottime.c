@@ -839,6 +839,9 @@ void efi_setup_loaded_image(struct efi_loaded_image *info, struct efi_object *ob
 	obj->protocols[7].guid = &efi_guid_hii_config_routing_protocol;
 	obj->protocols[7].protocol_interface = (void *)&efi_hii_config_routing;
 
+	obj->protocols[8].guid = &efi_guid_unicode_collation_protocol2;
+	obj->protocols[8].protocol_interface = (void *)&efi_unicode_collation;
+
 	info->file_path = file_path;
 	info->device_handle = efi_dp_find_obj(device_path, NULL);
 
