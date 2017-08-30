@@ -28,8 +28,9 @@ enum efi_timer_delay {
 	EFI_TIMER_RELATIVE = 2
 };
 
-#define UINTN size_t
-typedef long INTN;
+#define UINTN size_t   /* TODO this should be removed in a future patch */
+typedef size_t efi_uintn_t;
+typedef ssize_t efi_intn_t;
 typedef uint16_t *efi_string_t;
 
 #define EVT_TIMER				0x80000000
@@ -504,6 +505,35 @@ struct efi_device_path_to_text_protocol
 			struct efi_device_path *device_path,
 			bool display_only,
 			bool allow_shortcuts);
+};
+
+#define EFI_DEVICE_PATH_UTILITIES_PROTOCOL_GUID \
+	EFI_GUID(0x0379be4e, 0xd706, 0x437d, \
+		 0xb0, 0x37, 0xed, 0xb8, 0x2f, 0xb7, 0x72, 0xa4)
+
+struct efi_device_path_utilities_protocol {
+	efi_uintn_t (EFIAPI *get_device_path_size)(
+		const struct efi_device_path *device_path);
+	struct efi_device_path *(EFIAPI *duplicate_device_path)(
+		const struct efi_device_path *device_path);
+	struct efi_device_path *(EFIAPI *append_device_path)(
+		const struct efi_device_path *src1,
+		const struct efi_device_path *src2);
+	struct efi_device_path *(EFIAPI *append_device_node)(
+		const struct efi_device_path *device_path,
+		const struct efi_device_path *device_node);
+	struct efi_device_path *(EFIAPI *append_device_path_instance)(
+		const struct efi_device_path *device_path,
+		const struct efi_device_path *device_path_instance);
+	struct efi_device_path *(EFIAPI *get_next_device_path_instance)(
+		struct efi_device_path **device_path_instance,
+		efi_uintn_t *device_path_instance_size);
+	bool (EFIAPI *is_device_path_multi_instance)(
+		const struct efi_device_path *device_path);
+	struct efi_device_path *(EFIAPI *create_device_node)(
+		uint8_t node_type,
+		uint8_t node_sub_type,
+		uint16_t node_length);
 };
 
 #define EFI_GOP_GUID \

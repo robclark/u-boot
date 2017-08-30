@@ -1153,6 +1153,10 @@ void efi_setup_loaded_image(struct efi_loaded_image *info, struct efi_object *ob
 	obj->protocols[3].protocol_interface =
 		(void *)&efi_device_path_to_text;
 
+	obj->protocols[4].guid = &efi_guid_device_path_utilities_protocol;
+	obj->protocols[4].protocol_interface =
+		(void *)&efi_device_path_utilities;
+
 	info->file_path = file_path;
 	info->device_handle = efi_dp_find_obj(device_path, NULL);
 
