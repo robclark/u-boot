@@ -830,6 +830,15 @@ void efi_setup_loaded_image(struct efi_loaded_image *info, struct efi_object *ob
 	obj->protocols[4].protocol_interface =
 		(void *)&efi_device_path_utilities;
 
+	obj->protocols[5].guid = &efi_guid_hii_string_protocol;
+	obj->protocols[5].protocol_interface = (void *)&efi_hii_string;
+
+	obj->protocols[6].guid = &efi_guid_hii_database_protocol;
+	obj->protocols[6].protocol_interface = (void *)&efi_hii_database;
+
+	obj->protocols[7].guid = &efi_guid_hii_config_routing_protocol;
+	obj->protocols[7].protocol_interface = (void *)&efi_hii_config_routing;
+
 	info->file_path = file_path;
 	info->device_handle = efi_dp_find_obj(device_path, NULL);
 

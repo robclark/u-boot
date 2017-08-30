@@ -536,6 +536,210 @@ struct efi_device_path_utilities_protocol
 		const struct efi_device_path *device_path);
 };
 
+#define EFI_HII_CONFIG_ROUTING_PROTOCOL_GUID \
+	EFI_GUID(0x587e72d7, 0xcc50, 0x4f79, \
+		 0x82, 0x09, 0xca, 0x29, 0x1f, 0xc1, 0xa1, 0x0f)
+
+struct efi_hii_config_routing_protocol
+{
+	efi_status_t(EFIAPI *extract_config)(
+		const struct efi_hii_config_routing_protocol *this,
+		const efi_string_t request,
+		efi_string_t *progress,
+		efi_string_t *results);
+	efi_status_t(EFIAPI *export_config)(
+		const struct efi_hii_config_routing_protocol *this,
+		efi_string_t *results);
+	efi_status_t(EFIAPI *route_config)(
+		const struct efi_hii_config_routing_protocol *this,
+		const efi_string_t configuration,
+		efi_string_t *progress);
+	efi_status_t(EFIAPI *block_to_config)(
+		const struct efi_hii_config_routing_protocol *this,
+		const efi_string_t config_request,
+		const uint8_t *block,
+		const UINTN block_size,
+		efi_string_t *config,
+		efi_string_t *progress);
+	efi_status_t(EFIAPI *config_to_block)(
+		const struct efi_hii_config_routing_protocol *this,
+		const efi_string_t config_resp,
+		const uint8_t *block,
+		const UINTN *block_size,
+		efi_string_t *progress);
+	efi_status_t(EFIAPI *get_alt_config)(
+		const struct efi_hii_config_routing_protocol *this,
+		const efi_string_t config_resp,
+		const efi_guid_t *guid,
+		const efi_string_t name,
+		const struct efi_device_path *device_path,
+		const efi_string_t alt_cfg_id,
+		efi_string_t *alt_cfg_resp);
+};
+
+#define EFI_HII_DATABASE_PROTOCOL_GUID	     \
+	EFI_GUID(0xef9fc172, 0xa1b2, 0x4693, \
+		 0xb3, 0x27, 0x6d, 0x32, 0xfc, 0x41, 0x60, 0x42)
+
+typedef enum {
+	EfiKeyLCtrl, EfiKeyA0, EfiKeyLAlt, EfiKeySpaceBar,
+	EfiKeyA2, EfiKeyA3, EfiKeyA4, EfiKeyRCtrl, EfiKeyLeftArrow,
+	EfiKeyDownArrow, EfiKeyRightArrow, EfiKeyZero,
+	EfiKeyPeriod, EfiKeyEnter, EfiKeyLShift, EfiKeyB0,
+	EfiKeyB1, EfiKeyB2, EfiKeyB3, EfiKeyB4, EfiKeyB5, EfiKeyB6,
+	EfiKeyB7, EfiKeyB8, EfiKeyB9, EfiKeyB10, EfiKeyRShift,
+	EfiKeyUpArrow, EfiKeyOne, EfiKeyTwo, EfiKeyThree,
+	EfiKeyCapsLock, EfiKeyC1, EfiKeyC2, EfiKeyC3, EfiKeyC4,
+	EfiKeyC5, EfiKeyC6, EfiKeyC7, EfiKeyC8, EfiKeyC9,
+	EfiKeyC10, EfiKeyC11, EfiKeyC12, EfiKeyFour, EfiKeyFive,
+	EfiKeySix, EfiKeyPlus, EfiKeyTab, EfiKeyD1, EfiKeyD2,
+	EfiKeyD3, EfiKeyD4, EfiKeyD5, EfiKeyD6, EfiKeyD7, EfiKeyD8,
+	EfiKeyD9, EfiKeyD10, EfiKeyD11, EfiKeyD12, EfiKeyD13,
+	EfiKeyDel, EfiKeyEnd, EfiKeyPgDn, EfiKeySeven, EfiKeyEight,
+	EfiKeyNine, EfiKeyE0, EfiKeyE1, EfiKeyE2, EfiKeyE3,
+	EfiKeyE4, EfiKeyE5, EfiKeyE6, EfiKeyE7, EfiKeyE8, EfiKeyE9,
+	EfiKeyE10, EfiKeyE11, EfiKeyE12, EfiKeyBackSpace,
+	EfiKeyIns, EfiKeyHome, EfiKeyPgUp, EfiKeyNLck, EfiKeySlash,
+	EfiKeyAsterisk, EfiKeyMinus, EfiKeyEsc, EfiKeyF1, EfiKeyF2,
+	EfiKeyF3, EfiKeyF4, EfiKeyF5, EfiKeyF6, EfiKeyF7, EfiKeyF8,
+	EfiKeyF9, EfiKeyF10, EfiKeyF11, EfiKeyF12, EfiKeyPrint,
+	EfiKeySLck, EfiKeyPause
+} efi_key;
+
+struct efi_key_descriptor
+{
+	efi_key key;
+	uint16_t unicode;
+	uint16_t shifted_unicode;
+	uint16_t alt_gr_unicode;
+	uint16_t shifted_alt_gr_unicode;
+	uint16_t modifier;
+	uint16_t affected_attribute;
+};
+
+struct efi_hii_keyboard_layout
+{
+	uint16_t layout_length;
+	efi_guid_t guid;
+	uint32_t layout_descriptor_string_offset;
+	uint8_t descriptor_count;
+	struct efi_key_descriptor descriptors[];
+};
+
+struct efi_hii_package_list_header
+{
+	efi_guid_t package_list_guid;
+	uint32_t package_length;
+};
+
+typedef void *efi_hii_handle_t;
+
+struct efi_hii_database_protocol
+{
+	efi_status_t(EFIAPI *new_package_list)(
+		const struct efi_hii_database_protocol *this,
+		const struct efi_hii_package_list_header *package_list,
+		const efi_handle_t driver_handle,
+		efi_hii_handle_t *handle);
+	efi_status_t(EFIAPI *remove_package_list)(
+		const struct efi_hii_database_protocol *this,
+		efi_hii_handle_t handle);
+	efi_status_t(EFIAPI *update_package_list)(
+		const struct efi_hii_database_protocol *this,
+		efi_hii_handle_t handle,
+		const struct efi_hii_package_list_header *package_list);
+	efi_status_t(EFIAPI *list_package_lists)(
+		const struct efi_hii_database_protocol *this,
+		uint8_t package_type,
+		const efi_guid_t *package_guid,
+		UINTN *handle_buffer_length,
+		efi_hii_handle_t *handle);
+	efi_status_t(EFIAPI *export_package_lists)(
+		const struct efi_hii_database_protocol *this,
+		efi_hii_handle_t handle,
+		UINTN *buffer_size,
+		struct efi_hii_package_list_header *buffer);
+	efi_status_t(EFIAPI *register_package_notify)(
+		const struct efi_hii_database_protocol *this,
+		uint8_t package_type,
+		const efi_guid_t *package_guid,
+		const void *package_notify_fn,
+		UINTN notify_type,
+		efi_handle_t *notify_handle);
+	efi_status_t(EFIAPI *unregister_package_notify)(
+		const struct efi_hii_database_protocol *this,
+		efi_handle_t notification_handle
+		);
+	efi_status_t(EFIAPI *find_keyboard_layouts)(
+		const struct efi_hii_database_protocol *this,
+		uint16_t *key_guid_buffer_length,
+		efi_guid_t *key_guid_buffer);
+	efi_status_t(EFIAPI *get_keyboard_layout)(
+		const struct efi_hii_database_protocol *this,
+		efi_guid_t *key_guid,
+		uint16_t *keyboard_layout_length,
+		struct efi_hii_keyboard_layout *keyboard_layout);
+	efi_status_t(EFIAPI *set_keyboard_layout)(
+		const struct efi_hii_database_protocol *this,
+		efi_guid_t *key_guid);
+	efi_status_t(EFIAPI *get_package_list_handle)(
+		const struct efi_hii_database_protocol *this,
+		efi_hii_handle_t package_list_handle,
+		efi_handle_t *driver_handle);
+};
+
+#define EFI_HII_STRING_PROTOCOL_GUID \
+	EFI_GUID(0x0fd96974, 0x23aa, 0x4cdc, \
+		 0xb9, 0xcb, 0x98, 0xd1, 0x77, 0x50, 0x32, 0x2a)
+
+typedef uint32_t efi_hii_font_style_t;
+typedef uint16_t efi_string_id_t;
+
+struct efi_font_info
+{
+	efi_hii_font_style_t font_style;
+	uint16_t font_size;
+	uint16_t font_name[1];
+};
+
+struct efi_hii_string_protocol
+{
+	efi_status_t(EFIAPI *new_string)(
+		const struct efi_hii_string_protocol *this,
+		efi_hii_handle_t package_list,
+		efi_string_id_t *string_id,
+		const uint8_t *language,
+		const uint16_t *language_name,
+		const efi_string_t string,
+		const struct efi_font_info *string_font_info);
+	efi_status_t(EFIAPI *get_string)(
+		const struct efi_hii_string_protocol *this,
+		const uint8_t *language,
+		efi_hii_handle_t package_list,
+		efi_string_id_t string_id,
+		efi_string_t string,
+		UINTN *string_size,
+		struct efi_font_info **string_font_info);
+	efi_status_t(EFIAPI *set_string)(
+		const struct efi_hii_string_protocol *this,
+		efi_hii_handle_t package_list,
+		efi_string_id_t string_id,
+		const uint8_t *language,
+		const efi_string_t string,
+		const struct efi_font_info *string_font_info);
+	efi_status_t(EFIAPI *get_languages)(
+		const struct efi_hii_string_protocol *this,
+		efi_hii_handle_t package_list,
+		uint8_t *languages,
+		UINTN *languages_size);
+	efi_status_t(EFIAPI *get_secondary_languages)(
+		const struct efi_hii_string_protocol *this,
+		efi_hii_handle_t package_list,
+		const uint8_t *primary_language,
+		uint8_t *secondary_languages,
+		UINTN *secondary_languages_size);
+};
+
 #define EFI_GOP_GUID \
 	EFI_GUID(0x9042a9de, 0x23dc, 0x4a38, \
 		 0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a)
