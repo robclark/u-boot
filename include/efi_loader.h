@@ -99,6 +99,7 @@ extern const efi_guid_t efi_guid_device_path_utilities_protocol;
 extern const efi_guid_t efi_guid_hii_config_routing_protocol;
 extern const efi_guid_t efi_guid_hii_database_protocol;
 extern const efi_guid_t efi_guid_hii_string_protocol;
+extern const efi_guid_t efi_guid_unicode_collation_protocol;
 extern const efi_guid_t efi_guid_unicode_collation_protocol2;
 
 extern unsigned int __efi_runtime_start, __efi_runtime_stop;
