@@ -222,8 +222,8 @@ static efi_status_t EFIAPI efi_file_delete(struct efi_file_handle *file)
 {
 	struct file_handle *fh = to_fh(file);
 	EFI_ENTRY("%p", file);
-	file_close(fh);
-	return EFI_EXIT(EFI_WARN_DELETE_FAILURE);
+	// TODO need fs_rm()..
+	return EFI_EXIT(file_close(fh));
 }
 
 static efi_status_t file_read(struct file_handle *fh, u64 *buffer_size,
@@ -343,6 +343,13 @@ static efi_status_t EFIAPI efi_file_write(struct efi_file_handle *file,
 	loff_t actwrite;
 
 	EFI_ENTRY("%p, %p, %p", file, buffer_size, buffer);
+
+	// XXX hack because fat_write is horrible:
+	if (!fs_exists(fh->path)) {
+		char *p = fh->path;
+		while ((p = strchr(p, '/')))
+			*p++ = '_';
+	}
 
 	if (set_blk_dev(fh)) {
 		ret = EFI_DEVICE_ERROR;

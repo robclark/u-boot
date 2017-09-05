@@ -88,7 +88,7 @@
 
 #ifdef CONFIG_EFI_LOADER
 #if defined(CONFIG_ARM64)
-#define BOOTEFI_NAME "bootaa64.efi"
+#define BOOTEFI_NAME "shell.efi"
 #elif defined(CONFIG_ARM)
 #define BOOTEFI_NAME "bootarm.efi"
 #endif

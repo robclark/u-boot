@@ -170,7 +170,6 @@ static unsigned long EFIAPI efi_raise_tpl(UINTN new_tpl)
 	UINTN old_tpl = efi_tpl;
 
 	EFI_ENTRY("0x%zx", new_tpl);
-
 	if (new_tpl < efi_tpl)
 		debug("WARNING: new_tpl < current_tpl in %s\n", __func__);
 	efi_tpl = new_tpl;
