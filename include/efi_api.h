@@ -243,11 +243,11 @@ struct efi_system_table {
 	struct efi_table_hdr hdr;
 	unsigned long fw_vendor;   /* physical addr of wchar_t vendor string */
 	u32 fw_revision;
-	unsigned long con_in_handle;
+	efi_handle_t con_in_handle;
 	struct efi_simple_input_interface *con_in;
-	unsigned long con_out_handle;
+	efi_handle_t con_out_handle;
 	struct efi_simple_text_output_protocol *con_out;
-	unsigned long stderr_handle;
+	efi_handle_t stderr_handle;
 	struct efi_simple_text_output_protocol *std_err;
 	struct efi_runtime_services *runtime;
 	struct efi_boot_services *boottime;
@@ -472,6 +472,61 @@ struct efi_simple_input_interface {
 			struct efi_simple_input_interface *this,
 			struct efi_input_key *key);
 	struct efi_event *wait_for_key;
+};
+
+
+#define EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL_GUID \
+	EFI_GUID(0xdd9e7534, 0x7762, 0x4698, \
+		 0x8c, 0x14, 0xf5, 0x85, 0x17, 0xa6, 0x25, 0xaa)
+
+/* key-shift state: */
+#define EFI_SHIFT_STATE_VALID     0x80000000
+#define EFI_RIGHT_SHIFT_PRESSED   0x00000001
+#define EFI_LEFT_SHIFT_PRESSED    0x00000002
+#define EFI_RIGHT_CONTROL_PRESSED 0x00000004
+#define EFI_LEFT_CONTROL_PRESSED  0x00000008
+#define EFI_RIGHT_ALT_PRESSED     0x00000010
+#define EFI_EFI_LEFT_ALT_PRESSED  0x00000020
+#define EFI_RIGHT_LOGO_PRESSED    0x00000040
+#define EFI_LEFT_LOGO_PRESSED     0x00000080
+#define EFI_MENU_KEY_PRESSED      0x00000100
+#define EFI_SYS_REQ_PRESSED       0x00000200
+
+/* key-toggle state: */
+#define EFI_TOGGLE_STATE_VALID 0x80
+#define EFI_SCROLL_LOCK_ACTIVE 0x01
+#define EFI_NUM_LOCK_ACTIVE    0x02
+#define EFI_CAPS_LOCK_ACTIVE   0x04
+
+struct efi_key_state {
+	uint32_t key_shift_state;
+	uint8_t  key_toggle_state;
+};
+
+struct efi_key_data {
+	struct efi_input_key key;
+	struct efi_key_state key_state;
+};
+
+struct efi_simple_text_input_ex_interface {
+	efi_status_t (EFIAPI *reset)(
+			struct efi_simple_text_input_ex_interface *this,
+			bool ExtendedVerification);
+	efi_status_t (EFIAPI *read_key_stroke)(
+			struct efi_simple_text_input_ex_interface *this,
+			struct efi_key_data *key_data);
+	struct efi_event *wait_for_key;
+	efi_status_t (EFIAPI *set_state)(
+			struct efi_simple_text_input_ex_interface *this,
+			uint8_t key_toggle_state);
+	efi_status_t (EFIAPI *register_key_notify)(
+			struct efi_simple_text_input_ex_interface *this,
+			struct efi_key_data *key_data,
+			efi_status_t (EFIAPI *notify_fn)(struct efi_key_data *key_data),
+			efi_handle_t *notify_handle);
+	efi_status_t (EFIAPI *unregister_key_notify)(
+			struct efi_simple_text_input_ex_interface *this,
+			efi_handle_t notify_handle);
 };
 
 #define CONSOLE_CONTROL_GUID \
