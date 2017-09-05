@@ -50,6 +50,10 @@ const efi_guid_t efi_guid_console_control = CONSOLE_CONTROL_GUID;
 #define cESC '\x1b'
 #define ESC "\x1b"
 
+/*
+ * EFI_CONSOLE_CONTROL:
+ */
+
 static efi_status_t EFIAPI efi_cin_get_mode(
 			struct efi_console_control_protocol *this,
 			int *mode, char *uga_exists, char *std_in_locked)
@@ -96,6 +100,11 @@ static struct simple_text_output_mode efi_con_mode = {
 	.cursor_row = 0,
 	.cursor_visible = 1,
 };
+
+
+/*
+ * EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL:
+ */
 
 static int term_read_reply(int *n, int maxnum, char end_char)
 {
@@ -364,32 +373,77 @@ const struct efi_simple_text_output_protocol efi_con_out = {
 	.mode = (void*)&efi_con_mode,
 };
 
+
+/*
+ * EFI_SIMPLE_TEXT_INPUT_PROTOCOL:
+ */
+
+/*
+ * FIFO to buffer up key-strokes, to allow dispatching key event
+ * notifications in advance of someone calling ReadKeyStroke().
+ */
+
+struct key_fifo {
+	unsigned rd, wr;
+	struct efi_key_data key[32]; /* use PoT size */
+};
+
+/* number of item's queued in fifo: */
+static unsigned fifo_count(struct key_fifo *fifo)
+{
+	return (ARRAY_SIZE(fifo->key) + fifo->wr - fifo->rd) % ARRAY_SIZE(fifo->key);
+}
+
+/* remaining space to queue items in fifo: */
+static unsigned fifo_space(struct key_fifo *fifo)
+{
+	return ARRAY_SIZE(fifo->key) - 1 - fifo_count(fifo);
+}
+
+/* push an item onto the tail of the fifo: */
+static void fifo_push(struct key_fifo *fifo, struct efi_key_data *key)
+{
+	assert(fifo_space(fifo) >= 1);
+	fifo->key[fifo->wr] = *key;
+	fifo->wr = (fifo->wr + 1) % ARRAY_SIZE(fifo->key);
+}
+
+/* pop an item from the head of the fifo: */
+static void fifo_pop(struct key_fifo *fifo, struct efi_key_data *key)
+{
+	assert(fifo_count(fifo) >= 1);
+	*key = fifo->key[fifo->rd];
+	fifo->rd = (fifo->rd + 1) % ARRAY_SIZE(fifo->key);
+}
+
+static struct key_fifo fifo;
+
+static void notify_key(struct efi_key_data *key);
+
 static efi_status_t EFIAPI efi_cin_reset(
 			struct efi_simple_input_interface *this,
 			bool extended_verification)
 {
 	EFI_ENTRY("%p, %d", this, extended_verification);
+	fifo.rd = fifo.wr = 0;
 	return EFI_EXIT(EFI_UNSUPPORTED);
 }
 
-static efi_status_t EFIAPI efi_cin_read_key_stroke(
-			struct efi_simple_input_interface *this,
-			struct efi_input_key *key)
+static efi_status_t read_key_stroke(struct efi_key_data *key_data)
 {
 	struct efi_input_key pressed_key = {
 		.scan_code = 0,
 		.unicode_char = 0,
 	};
+	struct efi_key_state key_state = {
+		.key_shift_state = 0,
+		.key_toggle_state = 0,
+	};
 	char ch;
-
-	EFI_ENTRY("%p, %p", this, key);
-
-	/* We don't do interrupts, so check for timers cooperatively */
-	efi_timer_check();
 
 	if (!tstc()) {
 		/* No key pressed */
-		return EFI_EXIT(EFI_NOT_READY);
+		return EFI_NOT_READY;
 	}
 
 	ch = getc();
@@ -404,7 +458,8 @@ static efi_status_t EFIAPI efi_cin_read_key_stroke(
 			pressed_key.scan_code = getc() - 'P' + 11;
 			break;
 		case 'a'...'z':
-			ch = ch - 'a';
+			key_state.key_shift_state =
+				EFI_SHIFT_STATE_VALID | EFI_EFI_LEFT_ALT_PRESSED;
 			break;
 		case '[':
 			ch = getc();
@@ -433,14 +488,61 @@ static efi_status_t EFIAPI efi_cin_read_key_stroke(
 			}
 			break;
 		}
+	} else if (0x01 <= ch && ch <= 0x1a && ch != '\t' && ch != '\b' &&
+		   ch != '\n' && ch != '\r') {
+		/*
+		 * Ctrl + <letter>.. except for a few cases that conflict
+		 * with unmodified chars
+		 */
+		ch = ch + 'a' - 1;
+		key_state.key_shift_state =
+			EFI_SHIFT_STATE_VALID | EFI_LEFT_CONTROL_PRESSED;
 	} else if (ch == 0x7f) {
 		/* Backspace */
 		ch = 0x08;
 	}
 	pressed_key.unicode_char = ch;
-	*key = pressed_key;
+	key_data->key = pressed_key;
+	key_data->key_state = key_state;
 
-	return EFI_EXIT(EFI_SUCCESS);
+	return EFI_SUCCESS;
+}
+
+static void read_keys(void)
+{
+	struct efi_key_data key;
+
+	while (fifo_space(&fifo) > 0 && read_key_stroke(&key) == EFI_SUCCESS) {
+		notify_key(&key);
+		fifo_push(&fifo, &key);
+	}
+}
+
+static efi_status_t EFIAPI efi_cin_read_key_stroke(
+			struct efi_simple_input_interface *this,
+			struct efi_input_key *key)
+{
+	struct efi_key_data key_data;
+
+	EFI_ENTRY("%p, %p", this, key);
+
+	while (true) {
+		efi_timer_check();
+		read_keys();
+
+		if (fifo_count(&fifo) == 0)
+			return EFI_EXIT(EFI_NOT_READY);
+
+		fifo_pop(&fifo, &key_data);
+
+		/* ignore ctrl/alt/etc */
+		if (key_data.key_state.key_shift_state)
+			continue;
+
+		*key = key_data.key;
+
+		return EFI_EXIT(EFI_SUCCESS);
+	}
 }
 
 struct efi_simple_input_interface efi_con_in = {
@@ -460,6 +562,7 @@ static void EFIAPI efi_console_timer_notify(struct efi_event *event,
 {
 	EFI_ENTRY("%p, %p", event, context);
 	if (tstc()) {
+		read_keys();
 		efi_con_in.wait_for_key->signaled = 1;
 		efi_signal_event(efi_con_in.wait_for_key);
 	}
@@ -467,12 +570,135 @@ static void EFIAPI efi_console_timer_notify(struct efi_event *event,
 }
 
 
-static struct efi_object efi_console_control_obj =
-	EFI_PROTOCOL_OBJECT(efi_guid_console_control, &efi_console_control);
-static struct efi_object efi_console_output_obj =
-	EFI_PROTOCOL_OBJECT(EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL_GUID, &efi_con_out);
-static struct efi_object efi_console_input_obj =
-	EFI_PROTOCOL_OBJECT(EFI_SIMPLE_TEXT_INPUT_PROTOCOL_GUID, &efi_con_in);
+/*
+ * EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL
+ */
+
+struct key_notifier {
+	struct list_head link;
+	struct efi_key_data key;
+	efi_status_t (EFIAPI *notify)(struct efi_key_data *key);
+};
+
+static LIST_HEAD(key_notifiers);  /* list of key_notifier */
+
+static bool match_key(struct efi_key_data *a, struct efi_key_data *b)
+{
+	return (a->key.scan_code == b->key.scan_code) &&
+	       (a->key.unicode_char == b->key.unicode_char) &&
+	       (a->key_state.key_shift_state == b->key_state.key_shift_state) &&
+	       (a->key_state.key_toggle_state == b->key_state.key_toggle_state);
+}
+
+static void notify_key(struct efi_key_data *key)
+{
+	struct key_notifier *notifier;
+
+	list_for_each_entry(notifier, &key_notifiers, link)
+		if (match_key(&notifier->key, key))
+			EFI_CALL(notifier->notify(key));
+}
+
+static efi_status_t EFIAPI efi_cin_ex_reset(
+		struct efi_simple_text_input_ex_interface *this,
+		bool extended_verification)
+{
+	EFI_ENTRY("%p, %d", this, extended_verification);
+	fifo.rd = fifo.wr = 0;
+	return EFI_EXIT(EFI_UNSUPPORTED);
+}
+
+static efi_status_t EFIAPI efi_cin_ex_read_key_stroke(
+		struct efi_simple_text_input_ex_interface *this,
+		struct efi_key_data *key_data)
+{
+	EFI_ENTRY("%p, %p", this, key_data);
+
+	/* We don't do interrupts, so check for timers cooperatively */
+	efi_timer_check();
+	read_keys();
+
+	if (fifo_count(&fifo) == 0)
+		return EFI_EXIT(EFI_NOT_READY);
+
+	fifo_pop(&fifo, key_data);
+
+	return EFI_EXIT(EFI_SUCCESS);
+}
+
+static efi_status_t EFIAPI efi_cin_ex_set_state(
+		struct efi_simple_text_input_ex_interface *this,
+		uint8_t key_toggle_state)
+{
+	EFI_ENTRY("%p, %x", this, key_toggle_state);
+	return EFI_EXIT(EFI_SUCCESS);
+}
+
+static efi_status_t EFIAPI efi_cin_ex_register_key_notify(
+		struct efi_simple_text_input_ex_interface *this,
+		struct efi_key_data *key_data,
+		efi_status_t (EFIAPI *notify_fn)(struct efi_key_data *key_data),
+		efi_handle_t *notify_handle)
+{
+	struct key_notifier *notifier;
+
+	EFI_ENTRY("%p, %p, %p", this, notify_fn, notify_handle);
+	notifier = calloc(1, sizeof(*notifier));
+	if (!notifier)
+		return EFI_EXIT(EFI_OUT_OF_RESOURCES);
+
+	notifier->notify = notify_fn;
+	notifier->key = *key_data;
+
+	list_add_tail(&notifier->link, &key_notifiers);
+
+	return EFI_EXIT(EFI_SUCCESS);
+}
+
+static efi_status_t EFIAPI efi_cin_ex_unregister_key_notify(
+		struct efi_simple_text_input_ex_interface *this,
+		efi_handle_t notify_handle)
+{
+	struct key_notifier *notifier = notify_handle;
+
+	EFI_ENTRY("%p, %p", this, notify_handle);
+
+	list_del(&notifier->link);
+	free(notifier);
+
+	return EFI_EXIT(EFI_SUCCESS);
+}
+
+static struct efi_simple_text_input_ex_interface efi_con_in_ex = {
+	.reset = efi_cin_ex_reset,
+	.read_key_stroke = efi_cin_ex_read_key_stroke,
+	.wait_for_key = NULL,
+	.set_state = efi_cin_ex_set_state,
+	.register_key_notify = efi_cin_ex_register_key_notify,
+	.unregister_key_notify = efi_cin_ex_unregister_key_notify,
+};
+
+static struct efi_object efi_console_control_obj = {
+	.protocols =  {
+		{ &efi_guid_console_control, (void *)&efi_console_control },
+	},
+	.handle = &efi_console_control_obj,
+};
+
+struct efi_object efi_console_output_obj = {
+	.protocols = {
+		{&EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL_GUID, (void *)&efi_con_out},
+	},
+	.handle = &efi_console_output_obj,
+};
+
+struct efi_object efi_console_input_obj = {
+	.protocols = {
+		{&EFI_SIMPLE_TEXT_INPUT_PROTOCOL_GUID,    (void *)&efi_con_in},
+		{&EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL_GUID, (void *)&efi_con_in_ex},
+	},
+	.handle = &efi_console_input_obj,
+};
 
 /* This gets called from do_bootefi_exec(). */
 int efi_console_register(void)

@@ -75,7 +75,9 @@ const char *__efi_nesting_dec(void);
 extern struct efi_runtime_services efi_runtime_services;
 extern struct efi_system_table systab;
 
+extern struct efi_object efi_console_output_obj;
 extern const struct efi_simple_text_output_protocol efi_con_out;
+extern struct efi_object efi_console_input_obj;
 extern struct efi_simple_input_interface efi_con_in;
 extern const struct efi_console_control_protocol efi_console_control;
 extern const struct efi_device_path_to_text_protocol efi_device_path_to_text;
@@ -130,14 +132,6 @@ struct efi_object {
 	/* The object spawner can either use this for data or as identifier */
 	void *handle;
 };
-
-#define EFI_PROTOCOL_OBJECT(_guid, _protocol) (struct efi_object){	\
-	.protocols = {{							\
-		.guid = &(_guid),	 				\
-		.protocol_interface = (void *)(_protocol), 		\
-	}},								\
-	.handle = (void *)(_protocol),					\
-}
 
 /**
  * struct efi_event
