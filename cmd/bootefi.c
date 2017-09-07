@@ -186,6 +186,13 @@ static unsigned long do_bootefi_exec(void *efi, void *fdt,
 	/* we don't support much: */
 	env_set("efi_8be4df61-93ca-11d2-aa0d-00e098032b8c_OsIndicationsSupported",
 		"{ro,boot}(blob)0000000000000000");
+	env_set("efi_8be4df61-93ca-11d2-aa0d-00e098032b8c_EFIDebug",
+		"(blob)ffffffff");
+	env_set("efi_605dab50-e046-4300-abb6-3dd810dd8b23_FALLBACK_VERBOSE",
+		"{ro,boot}(blob)01");
+	env_set("efi_8be4df61-93ca-11d2-aa0d-00e098032b8c_PlatformLang", "(utf8)en-US");
+	env_set("efi_8be4df61-93ca-11d2-aa0d-00e098032b8c_EfiDebugMask",
+		"(blob)ffffffffffffffff");
 
 	/* Call our payload! */
 	debug("%s:%d Jumping to 0x%lx\n", __func__, __LINE__, (long)entry);
