@@ -16,6 +16,7 @@
 #define _EFI_API_H
 
 #include <efi.h>
+#include <charset.h>
 
 #ifdef CONFIG_EFI_LOADER
 #include <asm/setjmp.h>
@@ -540,6 +541,8 @@ struct efi_device_path_utilities_protocol
 	EFI_GUID(0x587e72d7, 0xcc50, 0x4f79, \
 		 0x82, 0x09, 0xca, 0x29, 0x1f, 0xc1, 0xa1, 0x0f)
 
+typedef uint16_t efi_string_id_t;
+
 struct efi_hii_config_routing_protocol
 {
 	efi_status_t(EFIAPI *extract_config)(
@@ -630,7 +633,69 @@ struct efi_hii_package_list_header
 {
 	efi_guid_t package_list_guid;
 	uint32_t package_length;
-};
+} __packed;
+
+struct efi_hii_package_header {
+	uint32_t length : 24;
+	uint32_t type : 8;
+} __packed;
+
+#define EFI_HII_PACKAGE_TYPE_ALL          0x00
+#define EFI_HII_PACKAGE_TYPE_GUID         0x01
+#define EFI_HII_PACKAGE_FORMS             0x02
+#define EFI_HII_PACKAGE_STRINGS           0x04
+#define EFI_HII_PACKAGE_FONTS             0x05
+#define EFI_HII_PACKAGE_IMAGES            0x06
+#define EFI_HII_PACKAGE_SIMPLE_FONTS      0x07
+#define EFI_HII_PACKAGE_DEVICE_PATH       0x08
+#define EFI_HII_PACKAGE_KEYBOARD_LAYOUT   0x09
+#define EFI_HII_PACKAGE_ANIMATIONS        0x0A
+#define EFI_HII_PACKAGE_END               0xDF
+#define EFI_HII_PACKAGE_TYPE_SYSTEM_BEGIN 0xE0
+#define EFI_HII_PACKAGE_TYPE_SYSTEM_END   0xFF
+
+struct efi_hii_strings_package {
+	struct efi_hii_package_header header;
+	uint32_t header_size;
+	uint32_t string_info_offset;
+	uint16_t language_window[16];
+	efi_string_id_t language_name;
+	uint8_t  language[];
+} __packed;
+
+struct efi_hii_string_block {
+	uint8_t block_type;
+	/*uint8_t block_body[];*/
+} __packed;
+
+#define EFI_HII_SIBT_END               0x00 // The end of the string information.
+#define EFI_HII_SIBT_STRING_SCSU       0x10 // Single string using default font information.
+#define EFI_HII_SIBT_STRING_SCSU_FONT  0x11 // Single string with font information.
+#define EFI_HII_SIBT_STRINGS_SCSU      0x12 // Multiple strings using default font information.
+#define EFI_HII_SIBT_STRINGS_SCSU_FONT 0x13 // Multiple strings with font information.
+#define EFI_HII_SIBT_STRING_UCS2       0x14 // Single UCS-2 string using default font information.
+#define EFI_HII_SIBT_STRING_UCS2_FONT  0x15 // Single UCS-2 string with font information
+#define EFI_HII_SIBT_STRINGS_UCS2      0x16 // Multiple UCS-2 strings using default font information.
+#define EFI_HII_SIBT_STRINGS_UCS2_FONT 0x17 // Multiple UCS-2 strings with font information.
+#define EFI_HII_SIBT_DUPLICATE         0x20 // Create a duplicate of an existing string.
+#define EFI_HII_SIBT_SKIP2             0x21 // Skip a certain number of string identifiers.
+#define EFI_HII_SIBT_SKIP1             0x22 // Skip a certain number of string identifiers.
+#define EFI_HII_SIBT_EXT1              0x30 // For future expansion (one byte length field)
+#define EFI_HII_SIBT_EXT2              0x31 // For future expansion (two byte length field)
+#define EFI_HII_SIBT_EXT4              0x32 // For future expansion (four byte length field)
+#define EFI_HII_SIBT_FONT              0x40 // Font information.
+
+struct efi_hii_sibt_string_ucs2_block {
+	struct efi_hii_string_block header;
+	uint16_t string_text[];
+} __packed;
+
+static inline struct efi_hii_string_block *efi_hii_sibt_string_ucs2_block_next(
+	struct efi_hii_sibt_string_ucs2_block *blk)
+{
+	return ((void *)blk) + sizeof(*blk) +
+		(utf16_strlen(blk->string_text) + 1) * 2;
+}
 
 typedef void *efi_hii_handle_t;
 
@@ -693,7 +758,6 @@ struct efi_hii_database_protocol
 		 0xb9, 0xcb, 0x98, 0xd1, 0x77, 0x50, 0x32, 0x2a)
 
 typedef uint32_t efi_hii_font_style_t;
-typedef uint16_t efi_string_id_t;
 
 struct efi_font_info
 {

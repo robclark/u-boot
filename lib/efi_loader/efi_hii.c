@@ -7,6 +7,7 @@
  */
 
 #include <common.h>
+#include <malloc.h>
 #include <efi_loader.h>
 
 const efi_guid_t efi_guid_hii_config_routing_protocol =
@@ -14,12 +15,129 @@ const efi_guid_t efi_guid_hii_config_routing_protocol =
 const efi_guid_t efi_guid_hii_database_protocol = EFI_HII_DATABASE_PROTOCOL_GUID;
 const efi_guid_t efi_guid_hii_string_protocol = EFI_HII_STRING_PROTOCOL_GUID;
 
+struct hii_package {
+	// TODO should there be an associated efi_object?
+	struct list_head string_tables;     /* list of string_table */
+	/* we could also track fonts, images, etc */
+};
+
+struct string_table {
+	struct list_head link;
+	efi_string_id_t language_name;
+	char *language;
+	uint32_t nstrings;
+	/* NOTE: string id starts at 1 so value is stbl->strings[id-1] */
+	struct {
+		efi_string_t string;
+		/* we could also track font info, etc */
+	} strings[];
+};
+
+static void free_strings_table(struct string_table *stbl)
+{
+	int i;
+	for (i = 0; i < stbl->nstrings; i++)
+		free(stbl->strings[i].string);
+	free(stbl->language);
+	free(stbl);
+}
+
+static struct hii_package *new_package(void)
+{
+	struct hii_package *hii = malloc(sizeof(*hii));
+	INIT_LIST_HEAD(&hii->string_tables);
+	return hii;
+}
+
+static void free_package(struct hii_package *hii)
+{
+
+	while (!list_empty(&hii->string_tables)) {
+		struct string_table *stbl;
+
+		stbl = list_first_entry(&hii->string_tables,
+					struct string_table, link);
+		list_del(&stbl->link);
+		free_strings_table(stbl);
+	}
+
+	free(hii);
+}
+
+static efi_status_t add_strings_package(struct hii_package *hii,
+	struct efi_hii_strings_package *strings_package)
+{
+	struct efi_hii_string_block *block;
+	void *end = ((void *)strings_package) + strings_package->header.length;
+	uint32_t nstrings = 0;
+	unsigned id = 0;
+
+	debug("header_size: %08x\n", strings_package->header_size);
+	debug("string_info_offset: %08x\n", strings_package->string_info_offset);
+	debug("language_name: %u\n", strings_package->language_name);
+	debug("language: %s\n", strings_package->language);
+
+	/* count # of string entries: */
+	block = ((void *)strings_package) + strings_package->string_info_offset;
+	while ((void *)block < end) {
+		switch (block->block_type) {
+		case EFI_HII_SIBT_STRING_UCS2: {
+			struct efi_hii_sibt_string_ucs2_block *ucs2 =
+				(void *)block;
+			nstrings++;
+			block = efi_hii_sibt_string_ucs2_block_next(ucs2);
+			break;
+		}
+		case EFI_HII_SIBT_END:
+			block = end;
+			break;
+		default:
+			debug("unknown HII string block type: %02x\n",
+			      block->block_type);
+			return EFI_INVALID_PARAMETER;
+		}
+	}
+
+	struct string_table *stbl = malloc(sizeof(*stbl) +
+			(nstrings * sizeof(stbl->strings[0])));
+	stbl->language_name = strings_package->language_name;
+	stbl->language = strdup((char *)strings_package->language);
+	stbl->nstrings = nstrings;
+
+	list_add(&stbl->link, &hii->string_tables);
+
+	/* and now parse string entries and populate string_table */
+	block = ((void *)strings_package) + strings_package->string_info_offset;
+
+	while ((void *)block < end) {
+		switch (block->block_type) {
+		case EFI_HII_SIBT_STRING_UCS2: {
+			struct efi_hii_sibt_string_ucs2_block *ucs2 =
+				(void *)block;
+			id++;
+			debug("%4u: \"%ls\"\n", id, ucs2->string_text);
+			stbl->strings[id-1].string =
+				utf16_strdup(ucs2->string_text);
+			block = efi_hii_sibt_string_ucs2_block_next(ucs2);
+			break;
+		}
+		case EFI_HII_SIBT_END:
+			return EFI_SUCCESS;
+		default:
+			debug("unknown HII string block type: %02x\n",
+			      block->block_type);
+			return EFI_INVALID_PARAMETER;
+		}
+	}
+
+	return EFI_SUCCESS;
+}
 
 /*
  * EFI_HII_CONFIG_ROUTING_PROTOCOL
  */
 
-static efi_status_t extract_config(
+static efi_status_t EFIAPI extract_config(
 	const struct efi_hii_config_routing_protocol *this,
 	const efi_string_t request,
 	efi_string_t *progress,
@@ -29,7 +147,7 @@ static efi_status_t extract_config(
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t export_config(
+static efi_status_t EFIAPI export_config(
 	const struct efi_hii_config_routing_protocol *this,
 	efi_string_t *results)
 {
@@ -37,7 +155,7 @@ static efi_status_t export_config(
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t route_config(
+static efi_status_t EFIAPI route_config(
 	const struct efi_hii_config_routing_protocol *this,
 	const efi_string_t configuration,
 	efi_string_t *progress)
@@ -46,7 +164,7 @@ static efi_status_t route_config(
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t block_to_config(
+static efi_status_t EFIAPI block_to_config(
 	const struct efi_hii_config_routing_protocol *this,
 	const efi_string_t config_request,
 	const uint8_t *block,
@@ -54,12 +172,12 @@ static efi_status_t block_to_config(
 	efi_string_t *config,
 	efi_string_t *progress)
 {
-	EFI_ENTRY("%p, \"%ls\", %p, %lu, %p, %p", this, config_request, block,
+	EFI_ENTRY("%p, \"%ls\", %p, %zu, %p, %p", this, config_request, block,
 		  block_size, config, progress);
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t config_to_block(
+static efi_status_t EFIAPI config_to_block(
 	const struct efi_hii_config_routing_protocol *this,
 	const efi_string_t config_resp,
 	const uint8_t *block,
@@ -71,7 +189,7 @@ static efi_status_t config_to_block(
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t get_alt_config(
+static efi_status_t EFIAPI get_alt_config(
 	const struct efi_hii_config_routing_protocol *this,
 	const efi_string_t config_resp,
 	const efi_guid_t *guid,
@@ -91,28 +209,67 @@ static efi_status_t get_alt_config(
  * EFI_HII_DATABASE_PROTOCOL
  */
 
-static efi_status_t new_package_list(
+static efi_status_t EFIAPI new_package_list(
 	const struct efi_hii_database_protocol *this,
 	const struct efi_hii_package_list_header *package_list,
 	const efi_handle_t driver_handle,
 	efi_hii_handle_t *handle)
 {
-	/* Current shell start failure. */
-	/* Invoked from MdeModulePkg/Library/UefiHiiLib/HiiLib.c : HiiAddPackages */
-	/* (Via autogenerated .c file.) */
+	efi_status_t ret = EFI_SUCCESS;
+
 	EFI_ENTRY("%p, %p, %p, %p", this, package_list, driver_handle, handle);
-	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
+
+	if (!package_list || !driver_handle)
+		return EFI_EXIT(EFI_INVALID_PARAMETER);
+
+	struct hii_package *hii = new_package();
+	struct efi_hii_package_header *package;
+	void *end = ((void *)package_list) + package_list->package_length;
+
+	debug("package_list: %pUl (%u)\n", &package_list->package_list_guid,
+	      package_list->package_length);
+
+	package = ((void *)package_list) + sizeof(*package_list);
+	while ((void *)package < end) {
+		debug("package=%p, package type=%x, length=%u\n", package,
+		      package->type, package->length);
+		switch (package->type) {
+		case EFI_HII_PACKAGE_STRINGS:
+			ret = add_strings_package(hii,
+				(struct efi_hii_strings_package *)package);
+			break;
+		default:
+			break;
+		}
+
+		if (ret != EFI_SUCCESS)
+			goto error;
+
+		package = ((void *)package) + package->length;
+	}
+
+	// TODO in theory there is some notifications that should be sent..
+
+	*handle = hii;
+
+	return EFI_EXIT(EFI_SUCCESS);
+
+error:
+	free_package(hii);
+	return EFI_EXIT(ret);
 }
 
-static efi_status_t remove_package_list(
+static efi_status_t EFIAPI remove_package_list(
 	const struct efi_hii_database_protocol *this,
 	efi_hii_handle_t handle)
 {
+	struct hii_package *hii = handle;
 	EFI_ENTRY("%p, %p", this, handle);
-	return EFI_EXIT(EFI_NOT_FOUND);
+	free_package(hii);
+	return EFI_EXIT(EFI_SUCCESS);
 }
 
-static efi_status_t update_package_list(
+static efi_status_t EFIAPI update_package_list(
 	const struct efi_hii_database_protocol *this,
 	efi_hii_handle_t handle,
 	const struct efi_hii_package_list_header *package_list)
@@ -121,7 +278,7 @@ static efi_status_t update_package_list(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t list_package_lists(
+static efi_status_t EFIAPI list_package_lists(
 	const struct efi_hii_database_protocol *this,
 	uint8_t package_type,
 	const efi_guid_t *package_guid,
@@ -133,7 +290,7 @@ static efi_status_t list_package_lists(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t export_package_lists(
+static efi_status_t EFIAPI export_package_lists(
 	const struct efi_hii_database_protocol *this,
 	efi_hii_handle_t handle,
 	UINTN *buffer_size,
@@ -143,7 +300,7 @@ static efi_status_t export_package_lists(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t register_package_notify(
+static efi_status_t EFIAPI register_package_notify(
 	const struct efi_hii_database_protocol *this,
 	uint8_t package_type,
 	const efi_guid_t *package_guid,
@@ -151,13 +308,13 @@ static efi_status_t register_package_notify(
 	UINTN notify_type,
 	efi_handle_t *notify_handle)
 {
-	EFI_ENTRY("%p, %u, %pUl, %p, %lu, %p", this, package_type,
+	EFI_ENTRY("%p, %u, %pUl, %p, %zu, %p", this, package_type,
 		  package_guid, package_notify_fn, notify_type,
 		  notify_handle);
 	return EFI_EXIT(EFI_OUT_OF_RESOURCES);
 }
 
-static efi_status_t unregister_package_notify(
+static efi_status_t EFIAPI unregister_package_notify(
 	const struct efi_hii_database_protocol *this,
 	efi_handle_t notification_handle)
 {
@@ -165,7 +322,7 @@ static efi_status_t unregister_package_notify(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t find_keyboard_layouts(
+static efi_status_t EFIAPI find_keyboard_layouts(
 	const struct efi_hii_database_protocol *this,
 	uint16_t *key_guid_buffer_length,
 	efi_guid_t *key_guid_buffer)
@@ -174,7 +331,7 @@ static efi_status_t find_keyboard_layouts(
 	return EFI_EXIT(EFI_NOT_FOUND); /* Invalid */
 }
 
-static efi_status_t get_keyboard_layout(
+static efi_status_t EFIAPI get_keyboard_layout(
 	const struct efi_hii_database_protocol *this,
 	efi_guid_t *key_guid,
 	uint16_t *keyboard_layout_length,
@@ -185,7 +342,7 @@ static efi_status_t get_keyboard_layout(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t set_keyboard_layout(
+static efi_status_t EFIAPI set_keyboard_layout(
 	const struct efi_hii_database_protocol *this,
 	efi_guid_t *key_guid)
 {
@@ -193,7 +350,7 @@ static efi_status_t set_keyboard_layout(
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t get_package_list_handle(
+static efi_status_t EFIAPI get_package_list_handle(
 	const struct efi_hii_database_protocol *this,
 	efi_hii_handle_t package_list_handle,
 	efi_handle_t *driver_handle)
@@ -207,7 +364,7 @@ static efi_status_t get_package_list_handle(
  * EFI_HII_STRING_PROTOCOL
  */
 
-static efi_status_t new_string(
+static efi_status_t EFIAPI new_string(
 	const struct efi_hii_string_protocol *this,
 	efi_hii_handle_t package_list,
 	efi_string_id_t *string_id,
@@ -216,13 +373,13 @@ static efi_status_t new_string(
 	const efi_string_t string,
 	const struct efi_font_info *string_font_info)
 {
-	EFI_ENTRY("%p, %p, %p, %p, %p, \"%ls\", %p", this, package_list,
+	EFI_ENTRY("%p, %p, %p, \"%s\", %p, \"%ls\", %p", this, package_list,
 		  string_id, language, language_name, string,
 		  string_font_info);
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t get_string(
+static efi_status_t EFIAPI get_string(
 	const struct efi_hii_string_protocol *this,
 	const uint8_t *language,
 	efi_hii_handle_t package_list,
@@ -231,13 +388,34 @@ static efi_status_t get_string(
 	UINTN *string_size,
 	struct efi_font_info **string_font_info)
 {
-	EFI_ENTRY("%p, %p, %p, %u, \"%ls\", %p, %p", this, language,
+	struct hii_package *hii = package_list;
+	struct string_table *stbl;
+
+	EFI_ENTRY("%p, \"%s\", %p, %u, %p, %p, %p", this, language,
 		  package_list, string_id, string, string_size,
 		  string_font_info);
+
+	list_for_each_entry(stbl, &hii->string_tables, link) {
+		if (!strcmp((char *)language, (char *)stbl->language)) {
+			unsigned idx = string_id - 1;
+			if (idx > stbl->nstrings)
+				return EFI_EXIT(EFI_NOT_FOUND);
+			efi_string_t str = stbl->strings[idx].string;
+			size_t len = utf16_strlen(str) + 1;
+			if (*string_size < len * 2) {
+				*string_size = len * 2;
+				return EFI_EXIT(EFI_BUFFER_TOO_SMALL);
+			}
+			memcpy(string, str, len * 2);
+			*string_size = len * 2;
+			return EFI_EXIT(EFI_SUCCESS);
+		}
+	}
+
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t set_string(
+static efi_status_t EFIAPI set_string(
 	const struct efi_hii_string_protocol *this,
 	efi_hii_handle_t package_list,
 	efi_string_id_t string_id,
@@ -245,31 +423,56 @@ static efi_status_t set_string(
 	const efi_string_t string,
 	const struct efi_font_info *string_font_info)
 {
-	EFI_ENTRY("%p, %p, %u, %p, \"%ls\", %p", this, package_list, string_id,
-		  language, string, string_font_info);
+	EFI_ENTRY("%p, %p, %u, \"%s\", \"%ls\", %p", this, package_list,
+		  string_id, language, string, string_font_info);
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
-static efi_status_t get_languages(
+static efi_status_t EFIAPI get_languages(
 	const struct efi_hii_string_protocol *this,
 	efi_hii_handle_t package_list,
 	uint8_t *languages,
 	UINTN *languages_size)
 {
+	struct hii_package *hii = package_list;
+	struct string_table *stbl;
+	size_t len = 0;
+
 	EFI_ENTRY("%p, %p, %p, %p", this, package_list, languages,
 		  languages_size);
-	return EFI_EXIT(EFI_NOT_FOUND);
+
+	/* figure out required size: */
+	list_for_each_entry(stbl, &hii->string_tables, link) {
+		len += strlen((char *)stbl->language) + 1;
+	}
+
+	if (*languages_size < len) {
+		*languages_size = len;
+		return EFI_EXIT(EFI_BUFFER_TOO_SMALL);
+	}
+
+	char *p = (char *)languages;
+	list_for_each_entry(stbl, &hii->string_tables, link) {
+		if (p != (char *)languages)
+			p += sprintf(p, ";");
+		p += sprintf(p, "%s", stbl->language);
+	}
+
+	debug("languages: %s\n", languages);
+
+	return EFI_EXIT(EFI_SUCCESS);
 }
 
-static efi_status_t get_secondary_languages(
+static efi_status_t EFIAPI get_secondary_languages(
 	const struct efi_hii_string_protocol *this,
 	efi_hii_handle_t package_list,
 	const uint8_t *primary_language,
 	uint8_t *secondary_languages,
 	UINTN *secondary_languages_size)
 {
-	EFI_ENTRY("%p, %p, %p, %p, %p", this, package_list, primary_language,
-		  secondary_languages, secondary_languages_size);
+	EFI_ENTRY("%p, %p, \"%s\", %p, %p", this, package_list,
+		  primary_language, secondary_languages,
+		  secondary_languages_size);
 	return EFI_EXIT(EFI_NOT_FOUND);
 }
 
