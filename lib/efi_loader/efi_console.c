@@ -316,11 +316,41 @@ static efi_status_t EFIAPI efi_cout_set_mode(
 	return EFI_EXIT(EFI_SUCCESS);
 }
 
+static const struct {
+	unsigned fg;
+	unsigned bg;
+} color[] = {
+	{ 30, 40 },     /* 0: black */
+	{ 34, 44 },     /* 1: blue */
+	{ 32, 42 },     /* 2: green */
+	{ 36, 46 },     /* 3: cyan */
+	{ 31, 41 },     /* 4: red */
+	{ 35, 45 },     /* 5: magenta */
+	{ 30, 40 },     /* 6: brown, map to black */
+	{ 37, 47 },     /* 7: light grey, map to white */
+	{ 37, 47 },     /* 8: bright, map to white */
+	{ 34, 44 },     /* 9: light blue, map to blue */
+	{ 32, 42 },     /* A: light green, map to green */
+	{ 36, 46 },     /* B: light cyan, map to cyan */
+	{ 31, 41 },     /* C: light red, map to red */
+	{ 35, 45 },     /* D: light magenta, map to magenta */
+	{ 33, 43 },     /* E: yellow */
+	{ 37, 47 },     /* F: white */
+};
+
 static efi_status_t EFIAPI efi_cout_set_attribute(
 			struct efi_simple_text_output_protocol *this,
 			unsigned long attribute)
 {
+	unsigned fg = EFI_ATTR_FG(attribute);
+	unsigned bg = EFI_ATTR_BG(attribute);
+
 	EFI_ENTRY("%p, %lx", this, attribute);
+
+	if (attribute)
+		printf(ESC"[%u;%um", color[fg].fg, color[bg].bg);
+	else
+		printf(ESC"[37;40m");
 
 	/* Just ignore attributes (colors) for now */
 	return EFI_EXIT(EFI_UNSUPPORTED);
