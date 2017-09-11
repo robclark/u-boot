@@ -47,6 +47,38 @@ static struct cout_mode efi_cout_modes[] = {
 
 const efi_guid_t efi_guid_console_control = CONSOLE_CONTROL_GUID;
 
+static struct stdio_dev *efiin, *efiout;
+
+static int efi_tstc(void)
+{
+	return efiin->tstc(efiin);
+}
+
+static int efi_getc(void)
+{
+	return efiin->getc(efiin);
+}
+
+static int efi_printf(const char *fmt, ...)
+{
+	va_list args;
+	uint i;
+	char printbuffer[CONFIG_SYS_PBSIZE];
+
+	va_start(args, fmt);
+
+	/*
+	 * For this to work, printbuffer must be larger than
+	 * anything we ever want to print.
+	 */
+	i = vsnprintf(printbuffer, sizeof(printbuffer), fmt, args);
+	va_end(args);
+
+	/* Print the string */
+	efiout->puts(efiout, printbuffer);
+	return i;
+}
+
 #define cESC '\x1b'
 #define ESC "\x1b"
 
@@ -111,16 +143,16 @@ static int term_read_reply(int *n, int maxnum, char end_char)
 	char c;
 	int i = 0;
 
-	c = getc();
+	c = efi_getc();
 	if (c != cESC)
 		return -1;
-	c = getc();
+	c = efi_getc();
 	if (c != '[')
 		return -1;
 
 	n[0] = 0;
 	while (1) {
-		c = getc();
+		c = efi_getc();
 		if (c == ';') {
 			i++;
 			if (i >= maxnum)
@@ -164,7 +196,7 @@ static efi_status_t EFIAPI efi_cout_output_string(
 
 	*utf16_to_utf8((u8 *)buf, string, n16) = '\0';
 
-	fputs(stdout, buf);
+	efiout->puts(efiout, buf);
 
 	for (p = buf; *p; p++) {
 		switch (*p) {
@@ -217,14 +249,14 @@ static int query_console_serial(int *rows, int *cols)
 	u64 timeout;
 
 	/* Empty input buffer */
-	while (tstc())
-		getc();
+	while (efi_tstc())
+		efi_getc();
 
-	printf(ESC"[18t");
+	efi_printf(ESC"[18t");
 
 	/* Check if we have a terminal that understands */
 	timeout = timer_get_us() + 1000000;
-	while (!tstc())
+	while (!efi_tstc())
 		if (timer_get_us() > timeout)
 			return -1;
 
@@ -246,16 +278,13 @@ static efi_status_t EFIAPI efi_cout_query_mode(
 	EFI_ENTRY("%p, %ld, %p, %p", this, mode_number, columns, rows);
 
 	if (!console_size_queried) {
-		const char *stdout_name = env_get("stdout");
 		int rows, cols;
 
 		console_size_queried = true;
 
-		if (stdout_name && !strcmp(stdout_name, "vidconsole") &&
+		if (!strcmp(efiout->name, "vidconsole") &&
 		    IS_ENABLED(CONFIG_DM_VIDEO)) {
-			struct stdio_dev *stdout_dev =
-				stdio_get_by_name("vidconsole");
-			struct udevice *dev = stdout_dev->priv;
+			struct udevice *dev = efiout->priv;
 			struct vidconsole_priv *priv =
 				dev_get_uclass_priv(dev);
 			rows = priv->rows;
@@ -342,9 +371,9 @@ static efi_status_t EFIAPI efi_cout_set_attribute(
 	EFI_ENTRY("%p, %lx", this, attribute);
 
 	if (attribute)
-		printf(ESC"[%u;%u;%um", bold, color[fg].fg, color[bg].bg);
+		efi_printf(ESC"[%u;%u;%um", bold, color[fg].fg, color[bg].bg);
 	else
-		printf(ESC"[0;37;40m");
+		efi_printf(ESC"[0;37;40m");
 
 	return EFI_EXIT(EFI_SUCCESS);
 }
@@ -354,7 +383,7 @@ static efi_status_t EFIAPI efi_cout_clear_screen(
 {
 	EFI_ENTRY("%p", this);
 
-	printf(ESC"[2J");
+	efi_printf(ESC"[2J");
 
 	return EFI_EXIT(EFI_SUCCESS);
 }
@@ -365,7 +394,7 @@ static efi_status_t EFIAPI efi_cout_set_cursor_position(
 {
 	EFI_ENTRY("%p, %ld, %ld", this, column, row);
 
-	printf(ESC"[%d;%df", (int)row, (int)column);
+	efi_printf(ESC"[%d;%df", (int)row, (int)column);
 	efi_con_mode.cursor_column = column;
 	efi_con_mode.cursor_row = row;
 
@@ -378,7 +407,7 @@ static efi_status_t EFIAPI efi_cout_enable_cursor(
 {
 	EFI_ENTRY("%p, %d", this, enable);
 
-	printf(ESC"[?25%c", enable ? 'h' : 'l');
+	efi_printf(ESC"[?25%c", enable ? 'h' : 'l');
 
 	return EFI_EXIT(EFI_SUCCESS);
 }
@@ -464,28 +493,28 @@ static efi_status_t read_key_stroke(struct efi_key_data *key_data)
 	};
 	char ch;
 
-	if (!tstc()) {
+	if (!efi_tstc()) {
 		/* No key pressed */
 		return EFI_NOT_READY;
 	}
 
-	ch = getc();
+	ch = efi_getc();
 	if (ch == cESC) {
 		/* Escape Sequence */
-		ch = getc();
+		ch = efi_getc();
 		switch (ch) {
 		case cESC: /* ESC */
 			pressed_key.scan_code = 23;
 			break;
 		case 'O': /* F1 - F4 */
-			pressed_key.scan_code = getc() - 'P' + 11;
+			pressed_key.scan_code = efi_getc() - 'P' + 11;
 			break;
 		case 'a'...'z':
 			key_state.key_shift_state =
 				EFI_SHIFT_STATE_VALID | EFI_EFI_LEFT_ALT_PRESSED;
 			break;
 		case '[':
-			ch = getc();
+			ch = efi_getc();
 			switch (ch) {
 			case 'A'...'D': /* up, down right, left */
 				pressed_key.scan_code = ch - 'A' + 1;
@@ -497,16 +526,16 @@ static efi_status_t read_key_stroke(struct efi_key_data *key_data)
 				pressed_key.scan_code = 5;
 				break;
 			case '1': /* F5 - F8 */
-				pressed_key.scan_code = getc() - '0' + 11;
-				getc();
+				pressed_key.scan_code = efi_getc() - '0' + 11;
+				efi_getc();
 				break;
 			case '2': /* F9 - F12 */
-				pressed_key.scan_code = getc() - '0' + 19;
-				getc();
+				pressed_key.scan_code = efi_getc() - '0' + 19;
+				efi_getc();
 				break;
 			case '3': /* DEL */
 				pressed_key.scan_code = 8;
-				getc();
+				efi_getc();
 				break;
 			}
 			break;
@@ -584,7 +613,7 @@ static void EFIAPI efi_console_timer_notify(struct efi_event *event,
 					    void *context)
 {
 	EFI_ENTRY("%p, %p", event, context);
-	if (tstc()) {
+	if (efi_tstc()) {
 		read_keys();
 		efi_con_in.wait_for_key->is_signaled = true;
 		efi_signal_event(efi_con_in.wait_for_key);
@@ -723,6 +752,27 @@ struct efi_object efi_console_input_obj = {
 	.handle = &efi_console_input_obj,
 };
 
+static struct stdio_dev *get_stdio_dev(const char *envname, int default_dev)
+{
+	const char *name;
+	struct stdio_dev *dev = NULL;
+
+	name = env_get(envname);
+	if (name) {
+		dev = stdio_get_by_name(name);
+		if (dev && dev->start) {
+			int ret = dev->start(dev);
+			if (ret < 0)
+				dev = NULL;
+		}
+	}
+
+	if (!dev)
+		dev = stdio_devices[default_dev];
+
+	return dev;
+}
+
 /* This gets called from do_bootefi_exec(). */
 int efi_console_register(void)
 {
@@ -732,6 +782,9 @@ int efi_console_register(void)
 	list_add_tail(&efi_console_control_obj.link, &efi_obj_list);
 	list_add_tail(&efi_console_output_obj.link, &efi_obj_list);
 	list_add_tail(&efi_console_input_obj.link, &efi_obj_list);
+
+	efiout = get_stdio_dev("efiout", stdout);
+	efiin  = get_stdio_dev("efiin",  stdin);
 
 	r = efi_create_event(EVT_NOTIFY_WAIT, TPL_CALLBACK,
 			     efi_key_notify, NULL, &efi_con_in.wait_for_key);
