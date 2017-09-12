@@ -144,6 +144,7 @@ struct efi_event {
 	enum efi_timer_delay trigger_type;
 	int queued;
 	int signaled;
+	struct list_head link;
 };
 
 

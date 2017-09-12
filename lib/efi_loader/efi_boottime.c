@@ -265,11 +265,7 @@ static efi_status_t EFIAPI efi_free_pool_ext(void *buffer)
 	return EFI_EXIT(r);
 }
 
-/*
- * Our event capabilities are very limited. Only a small limited
- * number of events is allowed to coexist.
- */
-static struct efi_event efi_events[16];
+static LIST_HEAD(efi_events);
 
 efi_status_t efi_create_event(uint32_t type, UINTN notify_tpl,
 			      void (EFIAPI *notify_function) (
@@ -277,7 +273,7 @@ efi_status_t efi_create_event(uint32_t type, UINTN notify_tpl,
 					void *context),
 			      void *notify_context, struct efi_event **event)
 {
-	int i;
+	struct efi_event *evt;
 
 	if (event == NULL)
 		return EFI_INVALID_PARAMETER;
@@ -289,21 +285,24 @@ efi_status_t efi_create_event(uint32_t type, UINTN notify_tpl,
 	    notify_function == NULL)
 		return EFI_INVALID_PARAMETER;
 
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (efi_events[i].type)
-			continue;
-		efi_events[i].type = type;
-		efi_events[i].notify_tpl = notify_tpl;
-		efi_events[i].notify_function = notify_function;
-		efi_events[i].notify_context = notify_context;
-		/* Disable timers on bootup */
-		efi_events[i].trigger_next = -1ULL;
-		efi_events[i].queued = 0;
-		efi_events[i].signaled = 0;
-		*event = &efi_events[i];
-		return EFI_SUCCESS;
-	}
-	return EFI_OUT_OF_RESOURCES;
+	evt = calloc(1, sizeof(*evt));
+	if (!evt)
+		return EFI_OUT_OF_RESOURCES;
+
+	evt->type = type;
+	evt->notify_tpl = notify_tpl;
+	evt->notify_function = notify_function;
+	evt->notify_context = notify_context;
+	/* Disable timers on bootup */
+	evt->trigger_next = -1ULL;
+	evt->queued = 0;
+	evt->signaled = 0;
+
+	list_add_tail(&evt->link, &efi_events);
+
+	*event = evt;
+
+	return EFI_SUCCESS;
 }
 
 static efi_status_t EFIAPI efi_create_event_ext(
@@ -326,30 +325,34 @@ static efi_status_t EFIAPI efi_create_event_ext(
  */
 void efi_timer_check(void)
 {
-	int i;
+	struct efi_event *evt;
 	u64 now = timer_get_us();
 
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (!efi_events[i].type)
+	/*
+	 * TODO perhaps optimize a bit and track the time of next
+	 * timer to expire so we could have a fast-path to skip
+	 * the loop?
+	 */
+	list_for_each_entry(evt, &efi_events, link) {
+		if (!evt->type)
 			continue;
-		if (efi_events[i].queued)
-			efi_signal_event(&efi_events[i]);
-		if (!(efi_events[i].type & EVT_TIMER) ||
-		    now < efi_events[i].trigger_next)
+		if (evt->queued)
+			efi_signal_event(evt);
+		if (!(evt->type & EVT_TIMER) ||
+		    now < evt->trigger_next)
 			continue;
-		switch (efi_events[i].trigger_type) {
+		switch (evt->trigger_type) {
 		case EFI_TIMER_RELATIVE:
-			efi_events[i].trigger_type = EFI_TIMER_STOP;
+			evt->trigger_type = EFI_TIMER_STOP;
 			break;
 		case EFI_TIMER_PERIODIC:
-			efi_events[i].trigger_next +=
-				efi_events[i].trigger_time;
+			evt->trigger_next += evt->trigger_time;
 			break;
 		default:
 			continue;
 		}
-		efi_events[i].signaled = 1;
-		efi_signal_event(&efi_events[i]);
+		evt->signaled = 1;
+		efi_signal_event(evt);
 	}
 	WATCHDOG_RESET();
 }
@@ -357,38 +360,32 @@ void efi_timer_check(void)
 efi_status_t efi_set_timer(struct efi_event *event, enum efi_timer_delay type,
 			   uint64_t trigger_time)
 {
-	int i;
-
 	/*
 	 * The parameter defines a multiple of 100ns.
 	 * We use multiples of 1000ns. So divide by 10.
 	 */
 	trigger_time = efi_div10(trigger_time);
 
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (event != &efi_events[i])
-			continue;
+	if (!(event->type & EVT_TIMER))
+		return EFI_INVALID_PARAMETER;
 
-		if (!(event->type & EVT_TIMER))
-			break;
-		switch (type) {
-		case EFI_TIMER_STOP:
-			event->trigger_next = -1ULL;
-			break;
-		case EFI_TIMER_PERIODIC:
-		case EFI_TIMER_RELATIVE:
-			event->trigger_next =
+	switch (type) {
+	case EFI_TIMER_STOP:
+		event->trigger_next = -1ULL;
+		break;
+	case EFI_TIMER_PERIODIC:
+	case EFI_TIMER_RELATIVE:
+		event->trigger_next =
 				timer_get_us() + trigger_time;
-			break;
-		default:
-			return EFI_INVALID_PARAMETER;
-		}
-		event->trigger_type = type;
-		event->trigger_time = trigger_time;
-		event->signaled = 0;
-		return EFI_SUCCESS;
+		break;
+	default:
+		return EFI_INVALID_PARAMETER;
 	}
-	return EFI_INVALID_PARAMETER;
+	event->trigger_type = type;
+	event->trigger_time = trigger_time;
+	event->signaled = 0;
+
+	return EFI_SUCCESS;
 }
 
 static efi_status_t EFIAPI efi_set_timer_ext(struct efi_event *event,
@@ -403,7 +400,7 @@ static efi_status_t EFIAPI efi_wait_for_event(unsigned long num_events,
 					      struct efi_event **event,
 					      unsigned long *index)
 {
-	int i, j;
+	int i;
 
 	EFI_ENTRY("%ld, %p, %p", num_events, event, index);
 
@@ -414,12 +411,6 @@ static efi_status_t EFIAPI efi_wait_for_event(unsigned long num_events,
 	if (efi_tpl != TPL_APPLICATION)
 		return EFI_EXIT(EFI_UNSUPPORTED);
 	for (i = 0; i < num_events; ++i) {
-		for (j = 0; j < ARRAY_SIZE(efi_events); ++j) {
-			if (event[i] == &efi_events[j])
-				goto known_event;
-		}
-		return EFI_EXIT(EFI_INVALID_PARAMETER);
-known_event:
 		if (!event[i]->type || event[i]->type & EVT_NOTIFY_SIGNAL)
 			return EFI_EXIT(EFI_INVALID_PARAMETER);
 		if (!event[i]->signaled)
@@ -450,57 +441,50 @@ out:
 
 static efi_status_t EFIAPI efi_signal_event_ext(struct efi_event *event)
 {
-	int i;
-
 	EFI_ENTRY("%p", event);
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (event != &efi_events[i])
-			continue;
-		if (event->signaled)
-			break;
+	if (!event->signaled) {
 		event->signaled = 1;
 		if (event->type & EVT_NOTIFY_SIGNAL)
 			efi_signal_event(event);
-		break;
 	}
 	return EFI_EXIT(EFI_SUCCESS);
 }
 
 static efi_status_t EFIAPI efi_close_event(struct efi_event *event)
 {
-	int i;
-
 	EFI_ENTRY("%p", event);
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (event == &efi_events[i]) {
-			event->type = 0;
-			event->trigger_next = -1ULL;
-			event->queued = 0;
-			event->signaled = 0;
-			return EFI_EXIT(EFI_SUCCESS);
-		}
-	}
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+	list_del(&event->link);
+	free(event);
+	return EFI_EXIT(EFI_SUCCESS);
 }
 
+/*
+ * - If Event is in the signaled state, it is cleared and EFI_SUCCESS
+ *   is returned.
+ *
+ * - If Event is not in the signaled state and has no notification
+ *   function, EFI_NOT_READY is returned.
+ *
+ * - If Event is not in the signaled state but does have a notification
+ *   function, the notification function is queued at the event’s
+ *   notification task priority level. If the execution of the
+ *   notification function causes Event to be signaled, then the signaled
+ *   state is cleared and EFI_SUCCESS is returned; if the Event is not
+ *   signaled, then EFI_NOT_READY is returned.
+ */
 static efi_status_t EFIAPI efi_check_event(struct efi_event *event)
 {
-	int i;
-
 	EFI_ENTRY("%p", event);
 	efi_timer_check();
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (event != &efi_events[i])
-			continue;
-		if (!event->type || event->type & EVT_NOTIFY_SIGNAL)
-			break;
-		if (!event->signaled)
-			efi_signal_event(event);
-		if (event->signaled)
-			return EFI_EXIT(EFI_SUCCESS);
-		return EFI_EXIT(EFI_NOT_READY);
+	if (event->type & EVT_NOTIFY_SIGNAL)
+		return EFI_EXIT(EFI_INVALID_PARAMETER);
+	if (!event->signaled && event->notify_function)
+		EFI_CALL_VOID(event->notify_function(event, event->notify_context));
+	if (event->signaled) {
+		event->signaled = 0;
+		return EFI_EXIT(EFI_SUCCESS);
 	}
-	return EFI_EXIT(EFI_INVALID_PARAMETER);
+	return EFI_EXIT(EFI_NOT_READY);
 }
 
 static efi_status_t EFIAPI efi_install_protocol_interface(void **handle,
@@ -900,15 +884,15 @@ static void efi_exit_caches(void)
 static efi_status_t EFIAPI efi_exit_boot_services(void *image_handle,
 						  unsigned long map_key)
 {
-	int i;
+	struct efi_event *evt;
 
 	EFI_ENTRY("%p, %ld", image_handle, map_key);
 
 	/* Notify that ExitBootServices is invoked. */
-	for (i = 0; i < ARRAY_SIZE(efi_events); ++i) {
-		if (efi_events[i].type != EVT_SIGNAL_EXIT_BOOT_SERVICES)
+	list_for_each_entry(evt, &efi_events, link) {
+		if (evt->type != EVT_SIGNAL_EXIT_BOOT_SERVICES)
 			continue;
-		efi_signal_event(&efi_events[i]);
+		efi_signal_event(evt);
 	}
 	/* Make sure that notification functions are not called anymore */
 	efi_tpl = TPL_HIGH_LEVEL;
