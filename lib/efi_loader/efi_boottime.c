@@ -184,12 +184,6 @@ void efi_signal_event(struct efi_event *event)
 	event->queued = 0;
 }
 
-static efi_status_t efi_unsupported(const char *funcname)
-{
-	debug("EFI: App called into unimplemented function %s\n", funcname);
-	return EFI_EXIT(EFI_UNSUPPORTED);
-}
-
 static unsigned long EFIAPI efi_raise_tpl(UINTN new_tpl)
 {
 	UINTN old_tpl = efi_tpl;
