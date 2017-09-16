@@ -1723,7 +1723,7 @@ efi_status_t EFIAPI efi_open_protocol(
 	}
 
 	r = efi_search_protocol(handle, protocol, &handler);
-	if (r != EFI_SUCCESS)
+	if (r != EFI_SUCCESS || attributes == EFI_OPEN_PROTOCOL_TEST_PROTOCOL)
 		goto out;
 
 	r = efi_protocol_open(handler, protocol_interface, agent_handle,
