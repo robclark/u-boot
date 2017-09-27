@@ -57,8 +57,6 @@ int console_announce_r(void);
 /*
  * CONSOLE multiplexing.
  */
-#ifdef CONFIG_CONSOLE_MUX
 #include <iomux.h>
-#endif
 
 #endif
