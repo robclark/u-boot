@@ -535,22 +535,40 @@ static int probe_usb_keyboard(struct usb_device *dev)
 		error = iomux_doenv(stdin, stdinname);
 		free(newstdin);
 		if (error)
-			return error;
+			goto unregister_stdio;
 	} else {
 		/* Check if this is the standard input device. */
-		if (strcmp(stdinname, DEVNAME))
-			return 1;
+		if (strcmp(stdinname, DEVNAME)) {
+			error = -1;
+			goto unregister_stdio;
+		}
 
 		/* Reassign the console */
-		if (overwrite_console())
-			return 1;
+		if (overwrite_console()) {
+			error = -1;
+			goto unregister_stdio;
+		}
 
 		error = console_assign(stdin, DEVNAME);
 		if (error)
-			return error;
+			goto unregister_stdio;
 	}
 
 	return 0;
+
+unregister_stdio:
+	/*
+	 * If probe fails, the device will be removed.. leaving dangling
+	 * pointers if the stdio device is not unregistered.  If u-boot
+	 * is built without stdio_deregister(), just pretend to succeed
+	 * in order to avoid dangling pointers.
+	 */
+#if CONFIG_IS_ENABLED(SYS_STDIO_DEREGISTER)
+	stdio_deregister(DEVNAME, 1);
+	return error;
+#else
+	return 0;
+#endif
 }
 
 #ifndef CONFIG_DM_USB
