@@ -97,6 +97,8 @@ REFLASH(dragonboard/u-boot.img, 8)\
 	"ramdisk_addr_r=0x84000000\0"\
 	"scriptaddr=0x90000000\0"\
 	"pxefile_addr_r=0x90100000\0"\
+	"efiout=vidconsole\0"\
+	"efiin=usbkbd\0"\
 	BOOTENV
 
 #define CONFIG_ENV_SIZE			0x2000
