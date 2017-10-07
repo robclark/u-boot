@@ -71,30 +71,31 @@ struct efi_boot_services {
 					 enum efi_timer_delay type,
 					 uint64_t trigger_time);
 	efi_status_t (EFIAPI *wait_for_event)(unsigned long number_of_events,
-			struct efi_event **event, unsigned long *index);
+			struct efi_event **event, size_t *index);
 	efi_status_t (EFIAPI *signal_event)(struct efi_event *event);
 	efi_status_t (EFIAPI *close_event)(struct efi_event *event);
 	efi_status_t (EFIAPI *check_event)(struct efi_event *event);
 #define EFI_NATIVE_INTERFACE	0x00000000
 	efi_status_t (EFIAPI *install_protocol_interface)(
-			void **handle, efi_guid_t *protocol,
+			void **handle, const efi_guid_t *protocol,
 			int protocol_interface_type, void *protocol_interface);
 	efi_status_t (EFIAPI *reinstall_protocol_interface)(
-			void *handle, efi_guid_t *protocol,
+			void *handle, const efi_guid_t *protocol,
 			void *old_interface, void *new_interface);
 	efi_status_t (EFIAPI *uninstall_protocol_interface)(void *handle,
-			efi_guid_t *protocol, void *protocol_interface);
-	efi_status_t (EFIAPI *handle_protocol)(efi_handle_t, efi_guid_t *,
-					       void **);
+			const efi_guid_t *protocol, void *protocol_interface);
+	efi_status_t (EFIAPI *handle_protocol)(efi_handle_t,
+					       const efi_guid_t *protocol,
+					       void **protocol_interface);
 	void *reserved;
 	efi_status_t (EFIAPI *register_protocol_notify)(
-			efi_guid_t *protocol, struct efi_event *event,
+			const efi_guid_t *protocol, struct efi_event *event,
 			void **registration);
 	efi_status_t (EFIAPI *locate_handle)(
 			enum efi_locate_search_type search_type,
-			efi_guid_t *protocol, void *search_key,
+			const efi_guid_t *protocol, void *search_key,
 			unsigned long *buffer_size, efi_handle_t *buffer);
-	efi_status_t (EFIAPI *locate_device_path)(efi_guid_t *protocol,
+	efi_status_t (EFIAPI *locate_device_path)(const efi_guid_t *protocol,
 			struct efi_device_path **device_path,
 			efi_handle_t *device);
 	efi_status_t (EFIAPI *install_configuration_table)(
@@ -131,14 +132,14 @@ struct efi_boot_services {
 #define EFI_OPEN_PROTOCOL_BY_DRIVER           0x00000010
 #define EFI_OPEN_PROTOCOL_EXCLUSIVE           0x00000020
 	efi_status_t (EFIAPI *open_protocol)(efi_handle_t handle,
-			efi_guid_t *protocol, void **interface,
+			const efi_guid_t *protocol, void **interface,
 			efi_handle_t agent_handle,
 			efi_handle_t controller_handle, u32 attributes);
 	efi_status_t (EFIAPI *close_protocol)(void *handle,
-			efi_guid_t *protocol, void *agent_handle,
+			const efi_guid_t *protocol, void *agent_handle,
 			void *controller_handle);
 	efi_status_t(EFIAPI *open_protocol_information)(efi_handle_t handle,
-			efi_guid_t *protocol,
+			const efi_guid_t *protocol,
 			struct efi_open_protocol_info_entry **entry_buffer,
 			unsigned long *entry_count);
 	efi_status_t (EFIAPI *protocols_per_handle)(efi_handle_t handle,
@@ -146,9 +147,9 @@ struct efi_boot_services {
 			unsigned long *protocols_buffer_count);
 	efi_status_t (EFIAPI *locate_handle_buffer) (
 			enum efi_locate_search_type search_type,
-			efi_guid_t *protocol, void *search_key,
+			const efi_guid_t *protocol, void *search_key,
 			unsigned long *no_handles, efi_handle_t **buffer);
-	efi_status_t (EFIAPI *locate_protocol)(efi_guid_t *protocol,
+	efi_status_t (EFIAPI *locate_protocol)(const efi_guid_t *protocol,
 			void *registration, void **protocol_interface);
 	efi_status_t (EFIAPI *install_multiple_protocol_interfaces)(
 			void **handle, ...);
@@ -156,10 +157,9 @@ struct efi_boot_services {
 			void *handle, ...);
 	efi_status_t (EFIAPI *calculate_crc32)(void *data,
 			unsigned long data_size, uint32_t *crc32);
-	void (EFIAPI *copy_mem)(void *destination, void *source,
-			unsigned long length);
-	void (EFIAPI *set_mem)(void *buffer, unsigned long size,
-			uint8_t value);
+	void (EFIAPI *copy_mem)(void *destination, const void *source,
+			size_t length);
+	void (EFIAPI *set_mem)(void *buffer, size_t size, uint8_t value);
 	void *create_event_ex;
 };
 
@@ -593,11 +593,21 @@ struct efi_simple_network_mode {
 	u8 media_present;
 };
 
-#define EFI_SIMPLE_NETWORK_RECEIVE_UNICAST               0x01,
-#define EFI_SIMPLE_NETWORK_RECEIVE_MULTICAST             0x02,
-#define EFI_SIMPLE_NETWORK_RECEIVE_BROADCAST             0x04,
-#define EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS           0x08,
-#define EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST 0x10,
+/* receive_filters bit mask */
+#define EFI_SIMPLE_NETWORK_RECEIVE_UNICAST               0x01
+#define EFI_SIMPLE_NETWORK_RECEIVE_MULTICAST             0x02
+#define EFI_SIMPLE_NETWORK_RECEIVE_BROADCAST             0x04
+#define EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS           0x08
+#define EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST 0x10
+
+/* interrupt status bit mask */
+#define EFI_SIMPLE_NETWORK_RECEIVE_INTERRUPT	0x01
+#define EFI_SIMPLE_NETWORK_TRANSMIT_INTERRUPT	0x02
+#define EFI_SIMPLE_NETWORK_COMMAND_INTERRUPT	0x04
+#define EFI_SIMPLE_NETWORK_SOFTWARE_INTERRUPT	0x08
+
+/* revision of the simple network protocol */
+#define EFI_SIMPLE_NETWORK_PROTOCOL_REVISION	0x00010000
 
 struct efi_simple_network
 {
@@ -626,14 +636,14 @@ struct efi_simple_network
 	efi_status_t (EFIAPI *get_status)(struct efi_simple_network *this,
 			u32 *int_status, void **txbuf);
 	efi_status_t (EFIAPI *transmit)(struct efi_simple_network *this,
-			ulong header_size, ulong buffer_size, void *buffer,
+			size_t header_size, size_t buffer_size, void *buffer,
 			struct efi_mac_address *src_addr,
 			struct efi_mac_address *dest_addr, u16 *protocol);
 	efi_status_t (EFIAPI *receive)(struct efi_simple_network *this,
-			ulong *header_size, ulong *buffer_size, void *buffer,
+			size_t *header_size, size_t *buffer_size, void *buffer,
 			struct efi_mac_address *src_addr,
 			struct efi_mac_address *dest_addr, u16 *protocol);
-	void (EFIAPI *waitforpacket)(void);
+	struct efi_event *wait_for_packet;
 	struct efi_simple_network_mode *mode;
 };
 
