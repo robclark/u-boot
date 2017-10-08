@@ -156,18 +156,6 @@ void efi_signal_event(struct efi_event *event)
 }
 
 /*
- * Write a debug message for an EPI API service that is not implemented yet.
- *
- * @funcname	function that is not yet implemented
- * @return	EFI_UNSUPPORTED
- */
-static efi_status_t efi_unsupported(const char *funcname)
-{
-	debug("EFI: App called into unimplemented function %s\n", funcname);
-	return EFI_EXIT(EFI_UNSUPPORTED);
-}
-
-/*
  * Raise the task priority level.
  *
  * This function implements the RaiseTpl service.
